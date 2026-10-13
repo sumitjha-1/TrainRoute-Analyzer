@@ -1,0 +1,100 @@
+.app-shell {
+  height: 100vh;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.app-body { flex: 1; display: flex; min-height: 0; overflow: hidden; }
+.app-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  overflow: hidden;
+}
+.app-graph-wrap {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.app-fullscreen-wrap {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.app-fullscreen-wrap:fullscreen {
+  background: var(--bg-app);
+  padding: 8px;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+}
+.app-fullscreen-wrap:fullscreen::backdrop { background: var(--bg-app); }
+
+/* ---- edit mode bar ---- */
+.edit-bar {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 8px 6px 14px;
+  margin-bottom: 8px;
+  background: var(--warning-soft);
+  border: 1px solid var(--warning);
+  border-radius: var(--radius-md);
+  font-size: 12px;
+  color: var(--text-primary);
+}
+.edit-bar-text { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.edit-bar-sep { color: var(--text-muted); }
+.edit-bar-count {
+  font-size: 10.5px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 20px;
+  color: var(--warning);
+  border: 1px solid var(--warning);
+}
+.edit-bar-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+@media (max-width: 900px) {
+  .app-body { flex-direction: column; overflow-y: auto; overflow-x: hidden; }
+  .app-main { padding: 8px; overflow: visible; }
+  .app-graph-wrap { min-height: 480px; }
+}
+
+@media print {
+  @page { size: A3 landscape; margin: 10mm; }
+
+  body * { visibility: hidden; }
+  .app-graph-wrap, .app-graph-wrap *, .print-legend, .print-legend * { visibility: visible; }
+
+  .app-header, .sidebar, .details-panel, .toolbar, .legend, .edit-bar,
+  .dialog-overlay, .graph-tooltip { display: none !important; }
+
+  .app-shell, .app-body, .app-main { display: block; height: auto; padding: 0; margin: 0; }
+  .app-graph-wrap { flex: 1 1 auto; min-width: 0; min-height: 0; width: 100%; overflow: hidden; }
+
+  .graph-root { border: none; }
+  .graph-scroll-area { overflow: visible !important; height: auto !important; }
+  .graph-time-header, .graph-day-label-vertical, .graph-station-axis { position: static !important; }
+  .edit-bar-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  margin-left: auto; font-size: 11.5px; color: var(--text-secondary); cursor: pointer; white-space: nowrap;
+}
+.edit-bar-toggle input { accent-color: var(--accent); }
+.app-main { padding: 8px; }
+}

@@ -1,0 +1,110 @@
+.details-panel {
+  width: 205px;
+  min-width: 205px;
+  height: 100%;
+  overflow-y: auto;
+  background: var(--bg-panel);
+  border-left: 1px solid var(--border-subtle);
+  padding: 12px;
+}
+
+.dp-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 14px; }
+.stat-box {
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 7px 4px;
+  text-align: center;
+}
+.stat-value { font-size: 14px; font-weight: 700; font-family: var(--font-mono); }
+.stat-label { font-size: 8.5px; color: var(--text-muted); margin-top: 2px; text-transform: uppercase; letter-spacing: 0.06em; }
+
+.dp-hint {
+  font-size: 11px;
+  color: var(--text-muted);
+  line-height: 1.55;
+  padding: 9px 10px;
+  background: var(--bg-input);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-subtle);
+}
+
+.dp-train-detail { border-top: 1px solid var(--border-subtle); padding-top: 12px; }
+.dp-train-head { display: flex; align-items: center; gap: 8px; margin-bottom: 12px; }
+.dp-train-number { font-size: 14px; font-weight: 700; font-family: var(--font-mono); }
+.dp-train-name { font-size: 10.5px; color: var(--text-muted); }
+.dp-close {
+  margin-left: auto;
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 3px 5px;
+  border-radius: 4px;
+}
+.dp-close:hover { color: var(--danger); background: var(--danger-soft); }
+
+.dp-section-title {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--text-muted);
+  margin: 14px 0 6px;
+}
+.dp-train-head + .dp-section-title { margin-top: 0; }
+
+.dp-stop-list { display: flex; flex-direction: column; gap: 1px; max-height: 42vh; overflow-y: auto; }
+.dp-stop-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 7px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.dp-stop-row:nth-child(odd) { background: var(--bg-input); }
+.dp-stop-row:hover { border-color: var(--border-strong); }
+.dp-stop-row.is-selected { background: var(--accent-soft); border-color: var(--accent); }
+.dp-stop-row.dp-stop-edited { box-shadow: inset 2px 0 0 var(--accent); }
+.dp-stop-station { display: flex; flex-direction: column; font-weight: 600; font-family: var(--font-mono); }
+.dp-stop-dist { font-weight: 400; color: var(--text-muted); font-size: 9px; }
+.dp-stop-times { display: flex; align-items: center; gap: 4px; font-family: var(--font-mono); color: var(--text-secondary); }
+.dp-arrow { color: var(--text-muted); font-size: 9px; }
+
+.dp-time-editable { cursor: pointer; border-bottom: 1px dotted currentColor; }
+.dp-time-editable:hover { color: var(--accent); }
+.dp-time-arrival { color: var(--marker-arrival); }
+.dp-time-departure { color: var(--marker-departure); }
+
+.dp-time-error { outline: 1.5px solid var(--danger); background: var(--danger-soft); border-radius: 3px; padding: 0 2px; }
+.dp-stop-row.dp-stop-error { box-shadow: inset 2px 0 0 var(--danger); }
+
+/* ---- path history ---- */
+.dp-compare-note { font-size: 10.5px; color: var(--text-muted); line-height: 1.5; margin-bottom: 6px; }
+.dp-change-list { display: flex; flex-direction: column; gap: 6px; max-height: 32vh; overflow-y: auto; }
+.dp-change {
+  padding: 7px 9px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  border: 1px solid var(--border-subtle);
+  border-left-width: 3px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+}
+.dp-change-changed { border-left-color: var(--warning); }
+.dp-change-added { border-left-color: var(--success); }
+.dp-change-removed { border-left-color: var(--danger); }
+.dp-change-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 3px; }
+.dp-change-station { font-weight: 700; font-size: 11.5px; }
+.dp-change-tag { font-size: 9px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-muted); font-family: var(--font-body); }
+.dp-change-was { color: var(--text-muted); text-decoration: line-through; }
+.dp-change-now { color: var(--text-primary); }
+.dp-change-halt { margin-top: 3px; color: var(--warning); font-family: var(--font-body); font-size: 10px; }
+
+@media (max-width: 1100px) {
+  .details-panel { display: none; }
+}

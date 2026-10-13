@@ -1,0 +1,30 @@
+.station-result {
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  padding: 9px;
+  margin-bottom: 8px;
+}
+.station-result-head { display: flex; align-items: center; gap: 8px; color: var(--accent); }
+.station-result-code { font-size: 13px; font-weight: 700; font-family: var(--font-mono); color: var(--text-primary); }
+.station-result-name { font-size: 10px; color: var(--text-muted); }
+.station-result-count { font-size: 10px; color: var(--text-muted); margin: 6px 0 4px; }
+.station-result-list { display: flex; flex-direction: column; gap: 2px; max-height: 220px; overflow-y: auto; }
+.station-result-row {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 7px;
+  border-radius: var(--radius-sm);
+  background: var(--bg-input);
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  color: var(--text-primary);
+}
+.station-result-row:hover { background: var(--border-subtle); }
+.sr-train-number { font-family: var(--font-mono); font-weight: 600; font-size: 11.5px; min-width: 46px; }
+.sr-times { display: flex; align-items: center; gap: 4px; font-family: var(--font-mono); font-size: 11px; color: var(--text-secondary); flex: 1; }
+.sr-day { font-size: 9.5px; color: var(--warning); background: var(--warning-soft); padding: 1px 6px; border-radius: 10px; }
+.station-result-empty { font-size: 11px; color: var(--text-muted); padding: 6px; }

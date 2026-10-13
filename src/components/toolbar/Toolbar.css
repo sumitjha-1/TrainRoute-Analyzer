@@ -1,0 +1,146 @@
+.toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  height: 42px;
+  min-height: 42px;
+  max-height: 42px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-bottom: none;
+  border-radius: var(--radius-md) var(--radius-md) 0 0;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+}
+.toolbar * { flex-shrink: 0; }
+
+.toolbar-group {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  height: 32px;
+}
+.toolbar-group:not(:last-child) {
+  border-right: 1px solid var(--border-subtle);
+  padding-right: 8px;
+}
+.toolbar-group:first-child { position: sticky; left: 0; z-index: 2; background: var(--bg-panel); }
+.toolbar-group:last-child { position: sticky; right: 0; z-index: 2; background: var(--bg-panel); }
+.toolbar-spacer { flex: 1 1 auto; min-width: 8px; }
+
+.toolbar-zoom-value {
+  height: 30px;
+  min-width: 46px;
+  padding: 0 6px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  text-align: center;
+  cursor: pointer;
+}
+.toolbar-zoom-value:hover:not(:disabled) { background: var(--border-subtle); color: var(--text-primary); }
+.toolbar-zoom-value:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 30px;
+  padding: 0 10px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 11.5px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.toolbar-btn:hover { background: var(--border-subtle); border-color: var(--accent); }
+.toolbar-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.toolbar-select {
+  height: 30px;
+  padding: 0 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-strong);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 11.5px;
+  cursor: pointer;
+}
+.toolbar-select option { background: var(--bg-panel-raised); color: var(--text-primary); }
+input[type='date'].toolbar-select { min-width: 122px; max-width: 122px; }
+
+.toolbar-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 10px;
+  border-radius: 20px;
+  border: 1px solid var(--accent);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.toolbar-chip:hover { background: var(--accent); color: var(--on-accent); }
+
+.toolbar-dropdown-wrap { position: relative; }
+.toolbar-dropdown {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 160px;
+  background: var(--bg-panel-raised);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel);
+  padding: 8px;
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.toolbar-dropdown-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+  color: var(--text-secondary);
+  cursor: pointer;
+}
+.toolbar-dropdown-row:hover { background: var(--border-subtle); color: var(--text-primary); }
+.toolbar-dropdown-row input { accent-color: var(--accent); }
+.toolbar-dropdown .dd-divider { height: 1px; background: var(--border-subtle); margin: 6px 0; }
+.toolbar-dropdown-days { max-height: 280px; overflow-y: auto; }
+
+.toolbar-btn-limit { border-color: var(--warning); color: var(--warning); background: var(--warning-soft); }
+.toolbar-btn-limit:hover { border-color: var(--warning); filter: brightness(1.1); }
+
+.toolbar-checkbox-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 30px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.toolbar-checkbox-label input { accent-color: var(--accent); }
+
+.toolbar .icon-btn { width: 30px !important; height: 30px !important; }
