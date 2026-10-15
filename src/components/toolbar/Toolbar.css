@@ -64,9 +64,19 @@
   font-weight: 500;
   cursor: pointer;
   white-space: nowrap;
+  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
 }
 .toolbar-btn:hover { background: var(--border-subtle); border-color: var(--accent); }
 .toolbar-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Edit button (lives in the toolbar now) */
+.toolbar-btn-edit {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+.toolbar-btn-edit:hover:not(:disabled) { background: var(--accent); color: var(--on-accent); }
 
 .toolbar-select {
   height: 30px;

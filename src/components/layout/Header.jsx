@@ -1,21 +1,7 @@
-import { TrainFront, Sun, Moon, CheckCircle2, Circle, Pencil } from 'lucide-react';
+import { TrainFront, Sun, Moon, CheckCircle2, Circle } from 'lucide-react';
 import { useAppStore } from '../../store/useAppStore';
-import { Button, IconButton } from '../common/Button';
+import { IconButton } from '../common/Button';
 import './Header.css';
-
-function EditControls() {
-  const isEditMode = useAppStore((s) => s.isEditMode);
-  const hasTrains = useAppStore((s) => s.trains.length > 0);
-  const enterEditMode = useAppStore((s) => s.enterEditMode);
-
-  // Save / Cancel live in the edit bar above the graph (also available in full screen).
-  if (isEditMode) return <span className="edit-mode-pill">Editing</span>;
-  return (
-    <Button icon={<Pencil size={14} />} disabled={!hasTrains} onClick={() => enterEditMode()} title="Enable editing">
-      Edit
-    </Button>
-  );
-}
 
 export function Header() {
   const theme = useAppStore((s) => s.theme);
@@ -39,7 +25,6 @@ export function Header() {
       </div>
 
       <div className="app-header-actions">
-        <EditControls />
         <IconButton onClick={toggleTheme} title="Toggle theme">
           {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
         </IconButton>

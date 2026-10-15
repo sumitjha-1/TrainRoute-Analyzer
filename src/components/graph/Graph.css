@@ -77,8 +77,8 @@
 }
 
 .graph-time-header { position: sticky; z-index: 30; display: flex; background: var(--bg-panel); }
-.graph-time-header-top { top: 0; border-bottom: 1px solid var(--border-strong); }
-.graph-time-header-bottom { bottom: 0; border-top: 1px solid var(--border-strong); }
+.graph-time-header-top { top: 0; box-shadow: inset 0 -1px 0 var(--border-strong); }
+.graph-time-header-bottom { bottom: 0; box-shadow: inset 0 1px 0 var(--border-strong); }
 .graph-corner {
   position: sticky;
   left: 0;
@@ -97,9 +97,12 @@
 .graph-time-track { position: relative; }
 .graph-time-label { font-size: 9.5px; fill: var(--text-secondary); font-family: var(--font-mono); }
 
+/* header ki exact height: border ki jagah inset shadow, svg ke neeche gap nahi */
+.graph-time-track svg, .graph-station-axis svg { display: block; }
+
 .graph-station-axis { background: var(--bg-panel); flex-shrink: 0; }
-.graph-station-code { font-size: 10px; font-weight: 600; fill: var(--text-primary); cursor: pointer; transition: fill 100ms ease; }
-.graph-station-dist { font-size: 9px; fill: var(--text-muted); }
+.graph-station-code { font-size: 9.5px; font-weight: 600; fill: var(--text-primary); cursor: pointer; transition: fill 100ms ease; letter-spacing: 0.01em; }
+.graph-station-dist { font-size: 8.5px; fill: var(--text-muted); }
 .graph-station-code:hover { fill: var(--accent); }
 .graph-station-code.is-selected { fill: var(--accent); font-weight: 800; font-size: 11px; }
 .graph-station-code.is-on-train { fill: var(--accent); }
@@ -118,13 +121,15 @@ g:has(> .graph-point-marker:hover) .graph-point-marker-visual { filter: drop-sha
 
 /* ---- focus / edit / previous path ---- */
 .graph-segment-focused { filter: drop-shadow(0 0 4px currentColor); }
-.graph-segment-edited { filter: drop-shadow(0 0 3px var(--accent)); }
+.graph-segment-edited { filter: drop-shadow(0 0 4px var(--accent)); }
 .graph-point-edited { filter: drop-shadow(0 0 4px var(--accent)); }
 .graph-point-last-edited {
   filter: drop-shadow(0 0 6px var(--accent)) drop-shadow(0 0 2px var(--bg-canvas));
   animation: edited-pulse 1.6s ease-in-out infinite;
 }
 @keyframes edited-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+
+.graph-prev-path { mix-blend-mode: normal; }
 
 .graph-point-error { filter: drop-shadow(0 0 4px var(--danger)); animation: error-ring-pulse 1.1s ease-in-out infinite; }
 @keyframes error-ring-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.35; } }

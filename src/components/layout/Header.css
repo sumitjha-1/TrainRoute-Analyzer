@@ -3,8 +3,9 @@
   align-items: center;
   gap: 18px;
   padding: 10px 20px;
-  background: var(--bg-panel);
+  background: linear-gradient(180deg, var(--bg-panel-raised), var(--bg-panel));
   border-bottom: 1px solid var(--border-subtle);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
 }
 .app-header-brand { display: flex; align-items: center; gap: 11px; }
 .app-header-logo {

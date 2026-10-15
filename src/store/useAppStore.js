@@ -84,40 +84,63 @@ function setEvent(stop, kind, abs) {
     : { ...stop, departureRaw: raw, departureClock: clock, departureDay: c.day, departureAbs: a };
 }
 
-/**
- * Default rules:
- *   Arrival   → right : both move (halt unchanged)
- *   Departure → right : departure only (halt longer)
- *   Arrival   → left  : arrival only (halt longer)
- *   Departure → left  : both move (halt unchanged)
- * single=true  → ONLY the dragged event moves (this is how you shorten or lengthen a halt).
- * clamp=true   → with single, the point can't cross its partner (arrival ≤ departure).
- */
-function shiftStop(stop, kind, delta, linked, { single = false, clamp = false } = {}) {
+const HALT_FOLLOW_GAP = 1; // min
+
+/** Is stop ke aas-paas ke events: ye stop inke beech hi rahega. */
+function neighborBounds(stops, idx) {
+  let lo = 0;
+  for (let i = idx - 1; i >= 0; i--) {
+    const v = stops[i].departureAbs ?? stops[i].arrivalAbs;
+    if (v != null) { lo = v; break; }
+  }
+  let hi = Infinity;
+  for (let i = idx + 1; i < stops.length; i++) {
+    const v = stops[i].arrivalAbs ?? stops[i].departureAbs;
+    if (v != null) { hi = v; break; }
+  }
+  return { lo, hi };
+}
+
+function movePair(stop, kind, targetAbs, { single, clamp, linked, lo, hi }) {
   const arr = stop.arrivalAbs;
   const dep = stop.departureAbs;
 
   if (arr == null || dep == null) {
-    const only = arr != null ? 'arrival' : 'departure';
-    return { next: setEvent(stop, only, (arr ?? dep) + delta), moved: [only] };
+    const t = Math.max(lo, Math.min(hi, targetAbs));
+    return { next: setEvent(stop, kind, t), moved: [kind] };
   }
 
-  if (single) {
-    const base = kind === 'arrival' ? arr : dep;
-    let target = base + delta;
-    if (clamp) target = kind === 'arrival' ? Math.min(target, dep) : Math.max(target, arr);
-    return { next: setEvent(stop, kind, target), moved: [kind] };
+  let a = arr;
+  let d = dep;
+
+  if (linked && !single) {
+    // non-stop: red ko pakdo to dono saath move
+    const len = d - a;
+    a = Math.max(lo, Math.min(targetAbs, hi - len));
+    d = a + len;
+  } else if (kind === 'arrival') {
+    a = Math.max(lo, targetAbs);
+    if (single) {
+      if (clamp) a = Math.min(a, d);
+    } else if (a > d) {
+      d = a + HALT_FOLLOW_GAP; // red aage nikla -> green 1 min aage
+      if (d > hi) { d = hi; a = Math.min(a, d); }
+    }
+  } else {
+    d = Math.min(hi, targetAbs);
+    if (single) {
+      if (clamp) d = Math.max(d, a);
+    } else if (d < a) {
+      a = d - HALT_FOLLOW_GAP; // green peeche gaya -> red 1 min peeche
+      if (a < lo) { a = lo; d = Math.max(d, a); }
+    }
   }
 
-  const both = linked || (kind === 'arrival' && delta > 0) || (kind === 'departure' && delta < 0);
-  if (both) {
-    const d = Math.max(delta, -Math.min(arr, dep));
-    let next = setEvent(stop, 'arrival', arr + d);
-    next = setEvent(next, 'departure', dep + d);
-    return { next, moved: ['arrival', 'departure'] };
-  }
-  const base = kind === 'arrival' ? arr : dep;
-  return { next: setEvent(stop, kind, base + delta), moved: [kind] };
+  const moved = [];
+  let next = stop;
+  if (a !== arr) { next = setEvent(next, 'arrival', a); moved.push('arrival'); }
+  if (d !== dep) { next = setEvent(next, 'departure', d); moved.push('departure'); }
+  return { next, moved };
 }
 
 function rebindDistances(trains, stations) {
@@ -395,6 +418,78 @@ export const useAppStore = create((set, get) => ({
   /** Returns an error message if this train may not be edited right now, otherwise null. */
   getEditLockError: (trainNumber) => editLockError(get(), { trainNumber }),
 
+  getStopBounds: (trainNumber, stationCode) => {
+    const train = get().trains.find((t) => t.trainNumber === trainNumber);
+    const idx = train ? train.stops.findIndex((st) => st.stationCode === stationCode) : -1;
+    return idx < 0 ? { lo: 0, hi: Infinity } : neighborBounds(train.stops, idx);
+  },
+
+  /** Core move: targetAbs = day*1440 + minutes. Drag aur typed edit dono yahi use karte hain. */
+  moveStopTo: (trainNumber, stationCode, kind, targetAbs, { single = false, clamp = false, linked = false, bound = false } = {}) => {
+    const s0 = get();
+    if (!s0.isEditMode) return NOT_EDITING;
+    const lock = editLockError(s0, { trainNumber });
+    if (lock) return { ok: false, error: lock };
+
+    const train = s0.trains.find((t) => t.trainNumber === trainNumber);
+    if (!train) return { ok: false, error: 'Train not found.' };
+    const idx = train.stops.findIndex((st) => st.stationCode === stationCode);
+    if (idx < 0) return { ok: false, error: 'Station not found in this train.' };
+
+    const target = train.stops[idx];
+    const { lo, hi } = bound ? neighborBounds(train.stops, idx) : { lo: 0, hi: Infinity };
+    const { next, moved } = movePair(target, kind, Math.round(targetAbs), { single, clamp, linked, lo, hi });
+    if (moved.length === 0) return { ok: true };
+
+    set((s) => {
+      const trains = s.trains.map((t) => {
+        if (t.trainNumber !== trainNumber) return t;
+        const stops = t.stops.map((st) => (st.stationCode === stationCode ? next : st));
+        const maxDay = stops.reduce((m, st) => Math.max(m, st.arrivalDay ?? 0, st.departureDay ?? 0), 0);
+        return { ...t, stops, maxDay };
+      });
+      return buildEditPatch(s, {
+        trains, type: 'stop-time', trainNumber, stationCode,
+        touched: markTouched(s.draftTouched, target.uid, ...moved),
+      });
+    });
+    return { ok: true };
+  },
+
+  /** Typed time edit (details panel). */
+  editStopTime: (trainNumber, stationCode, field, rawValue, opts = {}) => {
+    const clock = parseClock(rawValue);
+    if (!clock) return { ok: false, error: 'Invalid time format. Use HH:MM.' };
+    const { stop, error } = findTrainStop(get, trainNumber, stationCode);
+    if (error) return error;
+    const kind = field === 'arrivalRaw' ? 'arrival' : 'departure';
+    const day = stop[`${kind}Day`] ?? stop.arrivalDay ?? stop.departureDay ?? 0;
+    return get().moveStopTo(trainNumber, stationCode, kind, day * MINUTES_PER_DAY + clockToMinutes(clock), opts);
+  },
+
+  /** Double-click: stoppage -> non-stoppage (departure = arrival). */
+  makeNonStop: (trainNumber, stationCode) => {
+    const s0 = get();
+    if (!s0.isEditMode) return NOT_EDITING;
+    const lock = editLockError(s0, { trainNumber });
+    if (lock) return { ok: false, error: lock };
+    const { stop, error } = findTrainStop(get, trainNumber, stationCode);
+    if (error) return error;
+    if (stop.arrivalAbs == null || stop.departureAbs == null) return { ok: false, error: 'This stop has only one time.' };
+    if (stop.arrivalAbs === stop.departureAbs) return { ok: true };
+    const next = setEvent(stop, 'departure', stop.arrivalAbs);
+    set((s) => {
+      const trains = s.trains.map((t) =>
+        t.trainNumber !== trainNumber ? t : { ...t, stops: t.stops.map((st) => (st.stationCode === stationCode ? next : st)) }
+      );
+      return buildEditPatch(s, {
+        trains, type: 'stop-time', trainNumber, stationCode,
+        touched: markTouched(s.draftTouched, stop.uid, 'departure'),
+      });
+    });
+    return { ok: true };
+  },
+
   enterEditMode: () => {
     const s = get();
     if (s.isEditMode || s.trains.length === 0) return;
@@ -504,91 +599,6 @@ export const useAppStore = create((set, get) => ({
     });
     get().revalidate();
     set({ baselineTrains: get().trains, baselineStations: get().stations });
-    return { ok: true };
-  },
-
-  // ---- draft edits ----
-
-  /** Arrival/departure edit using the halt-preserving drag rules (see shiftStop). */
-  editStopTime: (trainNumber, stationCode, field, rawValue, { single = false, clamp = false } = {}) => {
-    const s0 = get();
-    if (!s0.isEditMode) return NOT_EDITING;
-    const lock = editLockError(s0, { trainNumber });
-    if (lock) return { ok: false, error: lock };
-
-    const clock = parseClock(rawValue);
-    if (!clock) return { ok: false, error: 'Invalid time format. Use HH:MM.' };
-
-    const { stop: target, error } = findTrainStop(get, trainNumber, stationCode);
-    if (error) return error;
-
-    const kind = field === 'arrivalRaw' ? 'arrival' : 'departure';
-    const day = target[`${kind}Day`] ?? target.arrivalDay ?? target.departureDay ?? 0;
-    const newAbs = day * MINUTES_PER_DAY + clockToMinutes(clock);
-    const currentAbs = target[`${kind}Abs`];
-
-    let next;
-    let moved;
-    if (currentAbs == null) {
-      next = setEvent(target, kind, newAbs);
-      moved = [kind];
-    } else {
-      const delta = newAbs - currentAbs;
-      if (delta === 0) return { ok: true };
-      ({ next, moved } = shiftStop(target, kind, delta, false, { single, clamp }));
-    }
-
-    set((s) => {
-      const trains = s.trains.map((t) =>
-        t.trainNumber !== trainNumber
-          ? t
-          : { ...t, stops: t.stops.map((st) => (st.stationCode === stationCode ? next : st)) }
-      );
-      return buildEditPatch(s, {
-        trains,
-        type: 'stop-time',
-        trainNumber,
-        stationCode,
-        touched: markTouched(s.draftTouched, target.uid, ...moved),
-      });
-    });
-    return { ok: true };
-  },
-
-  /** Pass-through point (no halt): arrival and departure always move together. */
-  editPassThroughTime: (trainNumber, stationCode, rawValue) => {
-    const s0 = get();
-    if (!s0.isEditMode) return NOT_EDITING;
-    const lock = editLockError(s0, { trainNumber });
-    if (lock) return { ok: false, error: lock };
-
-    const clock = parseClock(rawValue);
-    if (!clock) return { ok: false, error: 'Invalid time format. Use HH:MM.' };
-    const { stop: target, error } = findTrainStop(get, trainNumber, stationCode);
-    if (error) return error;
-
-    const raw = formatClock(clock);
-    set((s) => {
-      const trains = s.trains.map((t) =>
-        t.trainNumber !== trainNumber
-          ? t
-          : {
-              ...t,
-              stops: t.stops.map((st) =>
-                st.stationCode === stationCode
-                  ? withDraftTime(withDraftTime(st, 'arrival', clock, raw), 'departure', clock, raw)
-                  : st
-              ),
-            }
-      );
-      return buildEditPatch(s, {
-        trains,
-        type: 'stop-time',
-        trainNumber,
-        stationCode,
-        touched: markTouched(s.draftTouched, target.uid, 'arrival', 'departure'),
-      });
-    });
     return { ok: true };
   },
 

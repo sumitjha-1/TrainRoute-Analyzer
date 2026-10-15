@@ -22,7 +22,14 @@
 .legend-line-ten { border-top-color: var(--grid-ten-min); }
 .legend-line-diag { border-top-color: var(--accent); transform: rotate(-18deg); }
 .legend-line-flat { border-top-color: var(--accent); }
-.legend-line-prev { border-top: 2px dashed var(--text-secondary); }
+/* previous path = highlighter pen stroke */
+.legend-line-prev {
+  height: 6px;
+  border-top: none;
+  border-radius: 3px;
+  background: var(--accent);
+  opacity: 0.3;
+}
 .legend-swatch { display: inline-block; width: 16px; height: 4px; border-radius: 2px; }
 .legend-swatch-edited { background: var(--accent); box-shadow: 0 0 5px var(--accent); }
 .legend-swatch-selected { height: 6px; background: var(--accent-soft); border: 1px solid var(--accent); }

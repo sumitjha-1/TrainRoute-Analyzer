@@ -1,7 +1,7 @@
 import { memo, useMemo } from 'react';
 import { HOUR_LINES, TEN_MIN_LINES, MINOR_DOTS } from '../../utils/graph/gridBuilder';
 import { minutesToX, rangesOverlap } from '../../utils/graph/coordinates';
-import { formatClock, minutesToClock } from '../../utils/time/time';
+import { formatClock, absoluteToClock } from '../../utils/time/time';
 import { useAppStore, isStopEdited, useFocusedStationCodes } from '../../store/useAppStore';
 import { errorMarkKey } from '../../utils/graph/saveEngine';
 
@@ -180,9 +180,12 @@ const TrainPath = memo(function TrainPath({
   const lastEditedStation = hasEdits && lastEditedKey && lastEditedKey.startsWith(train.trainNumber + '\u0000')
     ? lastEditedKey.slice(train.trainNumber.length + 1)
     : null;
+  const editingOther = useAppStore(
+    (s) => s.isEditMode && s.editedTrainNumbers.size > 0 && !s.editedTrainNumbers.has(train.trainNumber)
+  );
 
-  const isDimmed = anyFocus && !isFocused;
-  const strokeWidth = isFocused ? 3.6 : isHovered ? 3 : 2;
+  const isDimmed = (anyFocus && !isFocused) || editingOther;
+  const strokeWidth = isFocused || hasEdits ? 3.8 : isHovered ? 3 : 2;
   const dashPattern = layerDashPattern ?? train.dashPattern;
 
   const visibleSegments = segments.filter((seg) =>
@@ -215,25 +218,22 @@ const TrainPath = memo(function TrainPath({
 
   return (
     <g
-      opacity={(isDimmed ? 0.16 : 1) * layerOpacity}
+      opacity={(isDimmed ? 0.6 : 1) * layerOpacity}
       onClick={() => onTrainClick(train.trainNumber)}
       style={{ cursor: 'pointer' }}
     >
-      {/* previous (before edit / last saved) path — dashed, behind the current one */}
-      {prevLines.map(({ seg, x1, y1, x2, y2 }, i) => (
-        <g key={`prev-${i}`} pointerEvents="none" className="graph-prev-path">
-          <line
-            x1={x1} y1={y1} x2={x2} y2={y2}
-            stroke={train.color}
-            strokeWidth={1.8}
-            strokeDasharray="3 5"
-            strokeLinecap="round"
-            opacity={0.6}
-          />
-          {seg.from.point && (
-            <circle cx={x1} cy={y1} r={3.5} fill="var(--bg-canvas)" stroke={train.color} strokeWidth={1.2} opacity={0.8} />
-          )}
-        </g>
+      {/* previous (before edit / last saved) path — highlighter-pen stroke behind the current one */}
+      {prevLines.map(({ x1, y1, x2, y2 }, i) => (
+        <line
+          key={`prev-${i}`}
+          x1={x1} y1={y1} x2={x2} y2={y2}
+          stroke={train.color}
+          strokeWidth={10}
+          strokeLinecap="round"
+          opacity={0.2}
+          pointerEvents="none"
+          className="graph-prev-path"
+        />
       ))}
 
       {isRecentlyUpdated && lines.map(({ x1, y1, x2, y2 }, i) => (
@@ -314,36 +314,27 @@ function isStationEditedRef(point, train) {
 }
 
 function DragGhost({ dragState }) {
-  const { x, y, currentMinutes, origMinutes, isStationDrag, candidateStationCode, stationCode, field, linked, single, isSoleEvent } = dragState;
-  const clock = minutesToClock(currentMinutes);
-  const stationMove = isStationDrag && candidateStationCode !== stationCode;
-  const label = stationMove ? candidateStationCode : formatClock(clock);
-
+  const { x, y, currentMinutes, origMinutes, linked, single, isSoleEvent } = dragState;
+  const c = absoluteToClock(currentMinutes);
+  const label = `${formatClock(c)}${c.day > 0 ? ` · D${c.day + 1}` : ''}`;
   const delta = currentMinutes - origMinutes;
   const lines = [];
-
-  if (stationMove) lines.push({ text: formatClock(clock), cls: 'graph-drag-ghost-sub' });
-
-  if (!stationMove && delta !== 0) {
+  if (delta !== 0) {
     lines.push({
       text: `${delta > 0 ? '+' : ''}${delta} min`,
       cls: `graph-drag-ghost-delta ${delta > 0 ? 'is-positive' : 'is-negative'}`,
     });
     if (!isSoleEvent) {
-      const kind = field === 'arrivalRaw' ? 'arrival' : 'departure';
-      const both = !single && (linked || (kind === 'arrival' && delta > 0) || (kind === 'departure' && delta < 0));
       lines.push({
-        text: single
-          ? 'One side only · halt changes'
-          : linked ? 'Pass-through · moves as one'
-          : both ? 'Both move · halt unchanged'
-          : 'Halt gets longer',
+        text: single ? 'One side only · halt changes'
+          : linked ? 'Non-stop · moves as one'
+          : 'Other side follows at 1 min if crossed',
         cls: 'graph-drag-ghost-sub',
       });
     }
   }
-
-  const boxWidth = Math.max(stationMove ? 72 : 58, lines.some((l) => l.text.length > 16) ? 170 : 0);
+  const longest = Math.max(label.length * 6.5, ...lines.map((l) => l.text.length * 5.4));
+  const boxWidth = Math.max(62, longest + 16);
   const boxHeight = 20 + lines.length * 13;
 
   return (
@@ -365,8 +356,6 @@ function DragGhost({ dragState }) {
 }
 
 function PointMarker({ seg, zoom, scale, train, dayIndex, dragState, isEdited, isLastEdited, onHover, onLeave, onDragStart, onRequestHalt }) {
-  const haltKey = seg.point ? `${train.trainNumber}\u0000${seg.point.stationCode}` : null;
-  const isHaltEnabledHere = useAppStore((s) => (haltKey ? s.haltEnabledKeys.has(haltKey) : false));
   const isEditMode = useAppStore((s) => s.isEditMode);
   const errKey = seg.point ? errorMarkKey(train.trainNumber, seg.point.stationCode, seg.point.kind) : null;
   const hasSaveError = useAppStore((s) => (errKey ? s.saveErrorKeys.has(errKey) : false));
@@ -395,7 +384,8 @@ function PointMarker({ seg, zoom, scale, train, dayIndex, dragState, isEdited, i
   }
 
   function handleRequestHaltClick(e) {
-    if (!isEditMode || !seg.point.isPassThrough || isHaltEnabledHere) return;
+    // double-click sirf asli stoppage par: use non-stoppage banata hai
+    if (!isEditMode || seg.point.isPassThrough || seg.point.isSoleEvent) return;
     e.preventDefault();
     e.stopPropagation();
     onRequestHalt && onRequestHalt({ train, stationCode: seg.point.stationCode });

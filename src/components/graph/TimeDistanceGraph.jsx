@@ -1,16 +1,14 @@
-import { useMemo, useRef, useState, useEffect, useCallback } from 'react';
+import { useMemo, useRef, useState, useEffect, useLayoutEffect, useCallback } from 'react';
 import {
   useAppStore,
   getVisibleTrains,
   filterTrainsByStation,
-  isHaltEnabled,
   getPreviousTrain,
 } from '../../store/useAppStore';
 import {
   buildDistanceScale,
   xToMinutes,
   minutesToX,
-  findNearestStation,
   panelWidth,
   STATION_LABEL_COL_WIDTH,
   DAY_PANEL_HEADER_HEIGHT,
@@ -51,10 +49,8 @@ export function TimeDistanceGraph() {
   const selectedTrainNumbers = useAppStore((s) => s.selectedTrainNumbers);
   const searchQuery = useAppStore((s) => s.searchQuery);
   const requestConfirm = useAppStore((s) => s.requestConfirm);
-  const editStopTime = useAppStore((s) => s.editStopTime);
-  const editStopStation = useAppStore((s) => s.editStopStation);
-  const editPassThroughTime = useAppStore((s) => s.editPassThroughTime);
-  const enableHaltAtStop = useAppStore((s) => s.enableHaltAtStop);
+  const moveStopTo = useAppStore((s) => s.moveStopTo);
+  const makeNonStop = useAppStore((s) => s.makeNonStop);
   const setHoveredTrain = useAppStore((s) => s.setHoveredTrain);
   const setFocusedTrain = useAppStore((s) => s.setFocusedTrain);
   const focusedTrainNumber = useAppStore((s) => s.focusedTrainNumber);
@@ -379,11 +375,12 @@ export function TimeDistanceGraph() {
     state.setFocusedTrain(train.trainNumber);
 
     const field = point.kind === 'departure' ? 'departureRaw' : 'arrivalRaw';
-    const linked = !!point.isPassThrough && !isHaltEnabled(state, train.trainNumber, point.stationCode);
+    // non-stop point: red dono ko saath le jata hai, green wahan stoppage banata hai
+    const linked = !!point.isPassThrough && point.kind === 'arrival';
     const rect = svgEl.getBoundingClientRect();
     const x0 = e.clientX - rect.left;
     const y0 = e.clientY - rect.top;
-    const origMinutes = clockToMinutes(point.clock);
+    const origMinutes = point.abs; // ab ABSOLUTE minutes (day*1440 + time)
 
     setDragState({
       sessionId: `${Date.now()}-${Math.random()}`,
@@ -412,61 +409,27 @@ export function TimeDistanceGraph() {
 
   const handleRequestHalt = useCallback(({ train, stationCode }) => {
     requestConfirm({
-      title: 'Add a stoppage here?',
-      message: `${train.trainNumber} currently passes through ${stationCode} with no halt. Make this a stoppage so arrival and departure can be set independently?`,
+      title: 'Make this a non-stoppage?',
+      message: `${train.trainNumber} halts at ${stationCode}. Arrival and departure will become the same time.`,
       confirmLabel: 'Yes',
       onConfirm: () => {
-        enableHaltAtStop(train.trainNumber, stationCode);
+        const r = makeNonStop(train.trainNumber, stationCode);
+        if (r && !r.ok) showErrorDialog(r.error);
       },
     });
-  }, [requestConfirm, enableHaltAtStop]);
+  }, [requestConfirm, makeNonStop, showErrorDialog]);
 
   const finalizeDrag = useCallback((session) => {
-    if (!session) return;
-    const train = trains.find((t) => t.trainNumber === session.trainNumber);
-    if (!train) return;
-
-    const movedStation = session.isStationDrag && session.candidateStationCode !== session.stationCode;
-    const movedTime = !movedStation && session.currentMinutes !== session.origMinutes;
-
-    if (movedStation) {
-      const newStation = stations.find((s) => s.stationCode === session.candidateStationCode);
-      if (!newStation) {
-        showErrorDialog(`"${session.candidateStationCode}" is not a valid route station. The stop was kept at its original position.`);
-        return;
-      }
-      const existingStop = train.stops.find((s) => s.stationCode === newStation.stationCode);
-      if (existingStop) {
-        requestConfirm({
-          title: 'Replace existing station stop',
-          message: `Station ${newStation.stationCode} already exists in this train. Replacing it will remove the existing stop at that station.`,
-          confirmLabel: 'Replace',
-          rows: [
-            { label: 'Train', value: train.trainNumber },
-            { label: 'Current station', value: session.stationCode },
-            { label: 'New station', value: newStation.stationCode },
-            { label: 'Stop to be removed', value: existingStop.stationCode },
-          ],
-          onConfirm: () => {
-            const result = editStopStation(train.trainNumber, session.stationCode, newStation.stationCode, { replaceExisting: true });
-            if (!result.ok) showErrorDialog(result.error);
-          },
-        });
-      } else {
-        const result = editStopStation(train.trainNumber, session.stationCode, newStation.stationCode);
-        if (!result.ok) showErrorDialog(result.error);
-      }
-    } else if (movedTime) {
-      const newRaw = formatClock(minutesToClock(session.currentMinutes));
-      const result = session.linked && !session.single
-        ? editPassThroughTime(train.trainNumber, session.stationCode, newRaw)
-        : editStopTime(train.trainNumber, session.stationCode, session.field, newRaw, {
-            single: session.single,
-            clamp: true, // dragged point can never cross its partner
-          });
-      if (!result.ok) showErrorDialog(result.error);
-    }
-  }, [trains, stations, requestConfirm, editStopStation, editStopTime, editPassThroughTime, showErrorDialog]);
+    if (!session || session.currentMinutes === session.origMinutes) return;
+    const kind = session.field === 'arrivalRaw' ? 'arrival' : 'departure';
+    const result = moveStopTo(session.trainNumber, session.stationCode, kind, session.currentMinutes, {
+      single: session.single,
+      linked: session.linked,
+      clamp: true,
+      bound: true, // neighbour station ke time ko cross nahi karega
+    });
+    if (!result.ok) showErrorDialog(result.error);
+  }, [moveStopTo, showErrorDialog]);
 
   useEffect(() => {
     if (!dragState) return;
@@ -476,32 +439,22 @@ export function TimeDistanceGraph() {
     function applyPendingMove() {
       moveRaf = null;
       const e = pending;
-      if (!e) return;
       const current = dragRef.current;
-      if (!current) return;
+      if (!e || !current) return;
       const rect = current.svgEl.getBoundingClientRect();
       const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      const minutesRaw = xToMinutes(x, zoom);
-      const minutes = Math.max(0, Math.min(1440, Math.round(minutesRaw)));
-      const nearest = findNearestStation(stations, scale, y);
-      const dx = Math.abs(x - current.origX);
-      const dy = Math.abs(y - current.origY);
-
-      // A station change needs a clear, mostly-vertical drag. Sideways time drags
-      // (even sloppy ones) never switch station by touching a neighbouring line.
-      const engage = dy > 28 && dy > dx * 1.5;
-      const keep = current.isStationDrag && dy > 14;
-      const isStationDrag = !!nearest && (engage || keep) && nearest.stationCode !== current.stationCode;
+      const deltaMin = Math.round(xToMinutes(x - current.origX, zoom));
+      const { lo, hi } = useAppStore.getState().getStopBounds(current.trainNumber, current.stationCode);
+      const abs = Math.min(hi, Math.max(lo, current.origMinutes + deltaMin));
 
       setDragState((prev) => prev && ({
         ...prev,
-        x,
-        y,
-        currentMinutes: minutes,
+        x: prev.origX + minutesToX(abs - prev.origMinutes, zoom), // limit par dot ruk jata hai
+        y: prev.origY,
+        currentMinutes: abs,
         single: e.shiftKey || useAppStore.getState().singleSideMode,
-        candidateStationCode: isStationDrag ? nearest.stationCode : prev.stationCode,
-        isStationDrag,
+        candidateStationCode: prev.stationCode,
+        isStationDrag: false,
       }));
     }
 
@@ -541,6 +494,43 @@ export function TimeDistanceGraph() {
       document.body.classList.remove('graph-dragging');
     };
   }, [dragState?.sessionId, zoom, stations, scale, finalizeDrag]);
+
+  // ─── Ctrl/⌘ + wheel (and trackpad pinch) → zoom around the cursor ───
+  const zoomAnchorRef = useRef(null);
+  const hasGraph = stations.length > 0 && scopedTrains.length > 0;
+
+  useEffect(() => {
+    const el = scrollElRef.current;
+    if (!el) return;
+    function onWheel(e) {
+      if (!(e.ctrlKey || e.metaKey)) return; // plain wheel = normal scroll
+      e.preventDefault();
+      const { zoom: z0, setZoom } = useAppStore.getState();
+      setZoom(z0 * Math.exp(-e.deltaY * 0.0015));
+      const z1 = useAppStore.getState().zoom;
+      if (z1 === z0) return;
+      const rect = el.getBoundingClientRect();
+      zoomAnchorRef.current = {
+        ratio: z1 / z0,
+        cx: e.clientX - rect.left,
+        cy: e.clientY - rect.top,
+        left: el.scrollLeft,
+        top: el.scrollTop,
+      };
+    }
+    el.addEventListener('wheel', onWheel, { passive: false });
+    return () => el.removeEventListener('wheel', onWheel);
+  }, [hasGraph]);
+
+  // after the zoom is rendered, keep the point under the cursor in place
+  useLayoutEffect(() => {
+    const a = zoomAnchorRef.current;
+    const el = scrollElRef.current;
+    if (!a || !el) return;
+    zoomAnchorRef.current = null;
+    el.scrollLeft = (a.left + a.cx) * a.ratio - a.cx;
+    el.scrollTop = (a.top + a.cy) * a.ratio - a.cy;
+  }, [zoom]);
 
   if (stations.length === 0 || scopedTrains.length === 0) {
     return (

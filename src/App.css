@@ -52,9 +52,10 @@
   gap: 12px;
   padding: 6px 8px 6px 14px;
   margin-bottom: 8px;
-  background: var(--warning-soft);
+  background: linear-gradient(90deg, var(--warning-soft), transparent 85%), var(--bg-panel);
   border: 1px solid var(--warning);
   border-radius: var(--radius-md);
+  box-shadow: var(--shadow-panel);
   font-size: 12px;
   color: var(--text-primary);
 }
@@ -67,8 +68,21 @@
   border-radius: 20px;
   color: var(--warning);
   border: 1px solid var(--warning);
+  background: var(--warning-soft);
 }
 .edit-bar-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+.edit-bar-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 11.5px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.edit-bar-toggle input { accent-color: var(--accent); }
 
 @media (max-width: 900px) {
   .app-body { flex-direction: column; overflow-y: auto; overflow-x: hidden; }
@@ -91,10 +105,5 @@
   .graph-root { border: none; }
   .graph-scroll-area { overflow: visible !important; height: auto !important; }
   .graph-time-header, .graph-day-label-vertical, .graph-station-axis { position: static !important; }
-  .edit-bar-toggle {
-  display: inline-flex; align-items: center; gap: 6px;
-  margin-left: auto; font-size: 11.5px; color: var(--text-secondary); cursor: pointer; white-space: nowrap;
-}
-.edit-bar-toggle input { accent-color: var(--accent); }
-.app-main { padding: 8px; }
+  .app-main { padding: 8px; }
 }

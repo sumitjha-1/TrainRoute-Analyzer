@@ -10,10 +10,9 @@ import { MINUTES_PER_DAY } from '../time/time.js';
 export function buildTrainDaySegments(train) {
   const points = [];
   train.stops.forEach((stop) => {
-    // Determine if this stop is a pass-through (no real halt)
-    const isPassThrough = stop.stoppageTime != null
-      ? stop.stoppageTime <= 0
-      : (stop.arrivalAbs === stop.departureAbs);
+    // Pass-through = arrival and departure are the same instant.
+    // stoppageTime is stale after edits, so it is not consulted.
+    const isPassThrough = stop.arrivalAbs != null && stop.arrivalAbs === stop.departureAbs;
 
     if (stop.arrivalAbs != null) {
       points.push({

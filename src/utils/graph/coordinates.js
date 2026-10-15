@@ -47,7 +47,7 @@ export function buildDistanceScale(stations, zoom, targetHeight = null) {
     return { toY: () => 0, toYFromDistance: () => 0, height: MIN_PANEL_HEIGHT };
   }
   const pxPerKm = BASE_PX_PER_KM * zoom;
-  const minGap = 30;                                  // tightest allowed gap between two stations
+  const minGap = Math.max(22, 30 * zoom);             // zoom out/in now compresses/expands station spacing too
   const maxGap = Math.max(minGap, 56 * zoom);         // long distances are compressed to this
   const topPadding = 16;
   const bottomPadding = 28;

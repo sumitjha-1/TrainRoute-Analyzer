@@ -30,14 +30,15 @@ export function StationAxis({ stations, scale, height, side = 'left' }) {
     });
   }
 
-  const edgeX = side === 'left' ? STATION_LABEL_COL_WIDTH - 1 : 1;
-  const markX = side === 'left' ? STATION_LABEL_COL_WIDTH - 7 : 7;
-  const textX = side === 'left' ? 8 : STATION_LABEL_COL_WIDTH - 8;
+  const W = STATION_LABEL_COL_WIDTH;
+  const edgeX = side === 'left' ? W - 1 : 1;
+  const tickX = side === 'left' ? W - 7 : 7;
+  const textX = side === 'left' ? 6 : W - 6;
   const anchor = side === 'left' ? 'start' : 'end';
 
   return (
-    <div className={`graph-station-axis graph-station-axis-${side}`} style={{ width: STATION_LABEL_COL_WIDTH, height }}>
-      <svg width={STATION_LABEL_COL_WIDTH} height={height}>
+    <div className={`graph-station-axis graph-station-axis-${side}`} style={{ width: W, height }}>
+      <svg width={W} height={height}>
         <line x1={edgeX} x2={edgeX} y1={0} y2={height} stroke="var(--border-strong)" />
         {stations.map((s) => {
           const y = scale.toY(s.stationCode);
@@ -46,21 +47,19 @@ export function StationAxis({ stations, scale, height, side = 'left' }) {
           const onTrain = hasFocus && focusedCodes.has(s.stationCode);
           const dim = hasFocus && !onTrain && !isSel;
           const state = isSel ? 'is-selected' : onTrain ? 'is-on-train' : dim ? 'is-dim' : '';
+          const hot = isSel || onTrain;
           return (
             <g key={s.stationCode}>
-              {(isSel || onTrain) && (
-                <rect x={0} y={y - 13} width={STATION_LABEL_COL_WIDTH} height={26}
-                      fill="var(--accent-soft)" opacity={isSel ? 1 : 0.55} />
-              )}
-              {/* small tick only — no line running under the station name */}
-              <circle cx={markX} cy={y} r={isSel ? 3.5 : 2.5}
-                      fill={isSel || onTrain ? 'var(--accent)' : 'var(--text-muted)'} />
-              <text x={textX} y={y - 3} textAnchor={anchor}
+              {hot && <rect x={0} y={y - 12} width={W} height={24} fill="var(--accent-soft)" opacity={isSel ? 1 : 0.55} />}
+              {/* tick graph ki station line ke bilkul same y par */}
+              <line x1={tickX} x2={edgeX} y1={y} y2={y} stroke={hot ? 'var(--accent)' : 'var(--border-strong)'} strokeWidth={1.2} />
+              <circle cx={tickX} cy={y} r={isSel ? 3.2 : 2.3} fill={hot ? 'var(--accent)' : 'var(--text-muted)'} />
+              <text x={textX} y={y - 2} textAnchor={anchor}
                     className={`graph-station-code ${state}`}
                     onClick={() => setSelectedStation(isSel ? null : s.stationCode, { scroll: false })}>
                 {s.stationCode}
               </text>
-              <text x={textX} y={y + 10} textAnchor={anchor}
+              <text x={textX} y={y + 9.5} textAnchor={anchor}
                     className={`graph-station-dist ${state} ${editable ? 'graph-station-dist-editable' : ''}`}
                     onClick={(e) => handleEdit(e, s)}>
                 {s.distance} km
