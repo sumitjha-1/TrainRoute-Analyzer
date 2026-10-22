@@ -2,7 +2,10 @@ import { useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Download, Image, FileText, Table, FileSpreadsheet } from 'lucide-react';
 import { useAppStore, getVisibleTrains } from '../../store/useAppStore';
+import { panelWidth, STATION_LABEL_COL_WIDTH } from '../../utils/graph/coordinates';
 import {
+  planExportScale,
+  EXPORT_TOO_BIG_MESSAGE,
   exportGraphAsPNG,
   exportGraphAsPDF,
   exportTrainsAsCSV,
@@ -34,6 +37,9 @@ export function DownloadMenu({ scrollAreaRef }) {
   const setExportRendering = useAppStore((s) => s.setExportRendering);
   const requestConfirm = useAppStore((s) => s.requestConfirm);
   const scheduleSource = useAppStore((s) => s.scheduleSource);
+  const viewMode = useAppStore((s) => s.viewMode);
+  const dayFilter = useAppStore((s) => s.dayFilter);
+  const zoom = useAppStore((s) => s.zoom);
 
   const visibleTrains = useMemo(
     () => getVisibleTrains({ trains, selectedTrainNumbers, searchQuery }),
@@ -118,10 +124,37 @@ export function DownloadMenu({ scrollAreaRef }) {
     return null;
   }
 
+  // Estimates the exported image size BEFORE anything heavy is rendered; a huge multi-day graph
+  // would otherwise freeze the page.
+  function exportIsTooLarge(list) {
+    const el = resolveScrollAreaEl();
+    let panels;
+    if (viewMode === 'layered') panels = 1;
+    else if (viewMode === 'weekly') panels = 7;
+    else {
+      const days = new Set();
+      list.forEach((t) => t.stops.forEach((s) => {
+        [s.arrivalAbs, s.departureAbs].forEach((a) => { if (a != null) days.add(Math.floor(a / 1440)); });
+      }));
+      panels = dayFilter ? Array.from(days).filter((d) => dayFilter.has(d)).length : days.size;
+    }
+    const width = Math.max(1, panels) * panelWidth(zoom) + STATION_LABEL_COL_WIDTH * 2;
+    const height = el ? el.scrollHeight : 1000;
+    if (!planExportScale(width, height).tooBig) return false;
+    requestConfirm({
+      title: 'Graph too large to export',
+      message: EXPORT_TOO_BIG_MESSAGE,
+      confirmLabel: 'OK',
+      onConfirm: () => {},
+    });
+    return true;
+  }
+
   async function handlePNG() {
     const el = ensureScrollAreaReady();
     if (!el) return;
     const list = resolveScopeTrainList();
+    if (exportIsTooLarge(list)) { setOpen(false); return; }
     await withScopeApplied(list, () => exportGraphAsPNG(el, 'railway-chart.png'));
     setOpen(false);
   }
@@ -129,12 +162,13 @@ export function DownloadMenu({ scrollAreaRef }) {
     const el = ensureScrollAreaReady();
     if (!el) return;
     const list = resolveScopeTrainList();
+    if (exportIsTooLarge(list)) { setOpen(false); return; }
     await withScopeApplied(list, () => exportGraphAsPDF(el, 'railway-chart.pdf'));
     setOpen(false);
   }
   function handleCSV() {
     const list = resolveScopeTrainList();
-    exportTrainsAsCSV(list, `${scope}-trains-schedule.csv`);
+    exportTrainsAsCSV(list, `${scope}-trains-schedule.csv`, scheduleSource?.originalTrains);
     setOpen(false);
   }
   // Schedule in the SAME format as the uploaded file, with previous + current timings
