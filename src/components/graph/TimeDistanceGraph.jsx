@@ -3,7 +3,6 @@ import {
   useAppStore,
   getVisibleTrains,
   filterTrainsByStation,
-  getPreviousTrain,
 } from '../../store/useAppStore';
 import {
   buildDistanceScale,
@@ -15,7 +14,7 @@ import {
   VIRTUALIZATION_BUFFER_PX,
 } from '../../utils/graph/coordinates';
 import { buildTrainDaySegments } from '../../utils/graph/pathBuilder';
-import { trainSignature } from '../../utils/graph/pathDiff'; // ✅ naya import
+import { trainSignature } from '../../utils/graph/pathDiff';
 import {
   dayIndexToWeekdayIndex,
   WEEKDAY_NAMES,
@@ -65,12 +64,8 @@ export function TimeDistanceGraph() {
   const locateTarget = useAppStore((s) => s.locateTarget);
   const stationLocateNonce = useAppStore((s) => s.stationLocateNonce);
 
-  const baselineTrains = useAppStore((s) => s.baselineTrains);
-  const pathHistory = useAppStore((s) => s.pathHistory);
-  const isEditMode = useAppStore((s) => s.isEditMode);
-  const editedTrainNumbers = useAppStore((s) => s.editedTrainNumbers);
   const showPreviousPaths = useAppStore((s) => s.showPreviousPaths);
-  const originalTrains = useAppStore((s) => s.originalTrains); // ✅ naya selector
+  const originalTrains = useAppStore((s) => s.originalTrains);
 
   const showErrorDialog = useCallback((message) => {
     requestConfirm({
@@ -91,13 +86,14 @@ export function TimeDistanceGraph() {
     [visibleTrains, stationFilter]
   );
 
-  // ✅ Previous path ab originalTrains (upload-time snapshot) se aata hai,
-  // aur signature compare karke sirf actually-changed trains ke liye dikhaya jaata hai.
+  // Previous path is drawn for EVERY train that has one: the train being edited right now
+  // (its pre-edit version) and every train that was edited & saved earlier (its last saved version).
+  // The History button in the toolbar switches all of them on/off.
   const previousByTrain = useMemo(() => {
     const map = new Map();
     if (!showPreviousPaths) return map;
     scopedTrains.forEach((t) => {
-      const orig = originalTrains[t.trainNumber];
+      const orig = originalTrains?.[t.trainNumber];
       if (orig && trainSignature(orig) !== trainSignature(t)) map.set(t.trainNumber, orig);
     });
     return map;
