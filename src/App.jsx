@@ -16,8 +16,6 @@ function EditModeBar() {
   const isEditMode = useAppStore((s) => s.isEditMode);
   const pending = useAppStore((s) => s.editHistory.length);
   const editingTrain = useAppStore((s) => s.editingTrainNumber);
-  const singleSideMode = useAppStore((s) => s.singleSideMode);
-  const setSingleSideMode = useAppStore((s) => s.setSingleSideMode);
   const saveEdits = useAppStore((s) => s.saveEdits);
   const requestCancelEdit = useAppStore((s) => s.requestCancelEdit);
 
@@ -31,10 +29,6 @@ function EditModeBar() {
         {editingTrain ? `Train ${editingTrain} — save or cancel to edit another` : 'One train at a time'}
         {pending > 0 && <span className="edit-bar-count">{pending} pending</span>}
       </span>
-      <label className="edit-bar-toggle" title="Or hold Shift while dragging">
-        <input type="checkbox" checked={singleSideMode} onChange={(e) => setSingleSideMode(e.target.checked)} />
-        Move one side only (halt)
-      </label>
       <div className="edit-bar-actions">
         <Button variant="ghost" size="sm" onClick={() => requestCancelEdit()}>Cancel</Button>
         <Button variant="primary" size="sm" onClick={() => saveEdits()}>Save</Button>
