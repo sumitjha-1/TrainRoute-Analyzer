@@ -2,8 +2,8 @@ import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import * as XLSX from 'xlsx';
 import { formatClock } from '../utils/time/time';
+import { buildTrainDaySegments } from '../utils/graph/pathBuilder';
 
-//  PNG / PDF of the graph
 
 const MAX_CANVAS_SIDE = 16000;       // px
 const MAX_CANVAS_AREA = 24_000_000;  // px^2
@@ -66,6 +66,144 @@ export async function exportGraphAsPDF(scrollAreaEl, filename = 'railway-chart.p
   pdf.save(filename);
 }
 
+// ---------------------------------------------------------------------
+//  ALL-TRAINS PDF  (vector drawing — no screenshot, so it never freezes)
+// ---------------------------------------------------------------------
+// The graph is drawn straight into the PDF as lines and text, one page per day.
+// There is no huge canvas and no on-screen rendering, so 500+ trains are fine.
+
+function toRgb(color) {
+  const c = String(color || '').trim();
+  if (c[0] === '#') {
+    const n = parseInt(c.length === 4 ? c.replace(/#(.)(.)(.)/, '#$1$1$2$2$3$3').slice(1) : c.slice(1), 16);
+    return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  }
+  const m = c.match(/hsl\(\s*([\d.]+)\s*,\s*([\d.]+)%\s*,\s*([\d.]+)%/i);
+  if (m) {
+    const h = parseFloat(m[1]) / 360, s = parseFloat(m[2]) / 100, l = parseFloat(m[3]) / 100;
+    const hue = (p, q, t) => {
+      if (t < 0) t += 1; if (t > 1) t -= 1;
+      if (t < 1 / 6) return p + (q - p) * 6 * t;
+      if (t < 1 / 2) return q;
+      if (t < 2 / 3) return p + (q - p) * (2 / 3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    return [hue(p, q, h + 1 / 3), hue(p, q, h), hue(p, q, h - 1 / 3)].map((v) => Math.round(v * 255));
+  }
+  return [200, 200, 200];
+}
+
+export async function exportAllTrainsVectorPDF(trains, stations, filename = 'railway-chart-all-trains.pdf') {
+  if (!stations || stations.length === 0 || !trains || trains.length === 0) {
+    throw new Error('Nothing to export — load a route and a schedule file first.');
+  }
+
+  // per train, per day segments
+  const perTrain = trains.map((train) => ({ train, ...buildTrainDaySegments(train) }));
+  const dayList = Array.from(new Set(perTrain.flatMap((pt) => Array.from(pt.segmentsByDay.keys())))).sort((a, b) => a - b);
+  if (dayList.length === 0) throw new Error('No train paths to draw.');
+
+  // page geometry (pt)
+  const PX_PER_MIN = 1.1;
+  const L = 90, R = 30, T = 56, B = 40;
+  const plotW = 1440 * PX_PER_MIN;
+  const W = L + plotW + R;
+  let rowH = 14;
+  const MAX_H = 14000; // PDF page limit is 14400
+  if (T + B + stations.length * rowH > MAX_H) rowH = (MAX_H - T - B) / stations.length;
+  const H = T + B + stations.length * rowH;
+
+  const yOfIndex = (i) => T + rowH * (i + 0.5);
+  const yByCode = new Map(stations.map((s, i) => [s.stationCode, yOfIndex(i)]));
+  const yFromDistance = (dist) => {
+    if (dist == null) return null;
+    if (dist <= stations[0].distance) return yOfIndex(0);
+    for (let i = 1; i < stations.length; i++) {
+      const a = stations[i - 1], b = stations[i];
+      if (dist <= b.distance) {
+        if (b.distance === a.distance) return yOfIndex(i);
+        return yOfIndex(i - 1) + (yOfIndex(i) - yOfIndex(i - 1)) * ((dist - a.distance) / (b.distance - a.distance));
+      }
+    }
+    return yOfIndex(stations.length - 1);
+  };
+  const yOfEnd = (end) => (end.point ? yByCode.get(end.point.stationCode) : undefined) ?? yFromDistance(end.distance);
+
+  const orientation = W > H ? 'l' : 'p';
+  const pdf = new jsPDF({ unit: 'pt', format: [W, H], orientation, compress: true });
+
+  for (let di = 0; di < dayList.length; di++) {
+    const day = dayList[di];
+    if (di > 0) pdf.addPage([W, H], orientation);
+
+    // background
+    pdf.setFillColor(10, 17, 31);
+    pdf.rect(0, 0, W, H, 'F');
+
+    // title
+    pdf.setTextColor(231, 236, 246);
+    pdf.setFontSize(14);
+    pdf.text(`Day ${day + 1}`, L, 28);
+    pdf.setFontSize(8);
+    pdf.setTextColor(147, 161, 189);
+    pdf.text(`${trains.length} trains · ${stations.length} stations`, L + 70, 28);
+
+    // station rows + labels
+    pdf.setFontSize(Math.min(7, rowH - 2));
+    stations.forEach((s, i) => {
+      const y = yOfIndex(i);
+      pdf.setDrawColor(36, 48, 72);
+      pdf.setLineWidth(0.3);
+      pdf.line(L, y, L + plotW, y);
+      pdf.setTextColor(200, 210, 230);
+      pdf.text(`${s.stationCode}  ${s.distance}km`, L - 6, y + 2.5, { align: 'right' });
+    });
+
+    // hour lines + labels
+    for (let h = 0; h <= 24; h++) {
+      const x = L + h * 60 * PX_PER_MIN;
+      pdf.setDrawColor(h % 6 === 0 ? 90 : 52, h % 6 === 0 ? 102 : 62, h % 6 === 0 ? 130 : 86);
+      pdf.setLineWidth(h % 6 === 0 ? 0.8 : 0.4);
+      pdf.line(x, T, x, H - B);
+      pdf.setTextColor(147, 161, 189);
+      pdf.setFontSize(8);
+      pdf.text(String(h).padStart(2, '0'), x, T - 6, { align: 'center' });
+      pdf.text(String(h).padStart(2, '0'), x, H - B + 14, { align: 'center' });
+    }
+
+    // train paths
+    pdf.setLineWidth(0.7);
+    pdf.setFontSize(5.5);
+    perTrain.forEach(({ train, segmentsByDay }) => {
+      const segs = segmentsByDay.get(day);
+      if (!segs || segs.length === 0) return;
+      const [r, g, b] = toRgb(train.color);
+      pdf.setDrawColor(r, g, b);
+      let labelled = false;
+      segs.forEach((seg) => {
+        const y1 = yOfEnd(seg.from);
+        const y2 = yOfEnd(seg.to);
+        if (y1 == null || y2 == null) return;
+        const x1 = L + seg.from.minutesOfDay * PX_PER_MIN;
+        const x2 = L + seg.to.minutesOfDay * PX_PER_MIN;
+        pdf.line(x1, y1, x2, y2);
+        if (!labelled && seg.from.point) {
+          pdf.setTextColor(r, g, b);
+          pdf.text(String(train.trainNumber), x1 + 2, y1 - 2);
+          labelled = true;
+        }
+      });
+    });
+
+    // let the browser breathe between pages
+    await new Promise((res) => setTimeout(res, 0));
+  }
+
+  pdf.save(filename);
+}
+
 export function exportTrainsAsCSV(trains, filename = 'train-schedule.csv', originalTrains = null) {
   // Edited vs not edited: previous (uploaded) timing is compared with the current timing.
   const orig = new Map((originalTrains || []).map((t) => [t.trainNumber, t]));
@@ -114,8 +252,21 @@ export function exportTrainsAsCSV(trains, filename = 'train-schedule.csv', origi
   downloadBlob(blob, filename);
 }
 
+// =====================================================================
+//  SCHEDULE DOWNLOAD — same layout as the uploaded schedule file
+// =====================================================================
+//
+// The uploaded file's rows are kept as-is. Only the arrival / departure
+// time cells that were changed are rewritten (in the cell's own style:
+// HH:MM or HH:MM:SS), plus the day-of-run cell when a time moved to another
+// day. Five columns are appended at the end:
+//   PREV_ARRIVAL, PREV_DEPARTURE  -> timing in the uploaded file
+//   CURR_ARRIVAL, CURR_DEPARTURE  -> timing now (after edits)
+//   TIME_CHANGED                  -> YES when previous and current differ
 
 const EXTRA_HEADERS = ['PREV_ARRIVAL', 'PREV_DEPARTURE', 'CURR_ARRIVAL', 'CURR_DEPARTURE', 'TIME_CHANGED', 'TRAIN_STATUS'];
+// TIME_CHANGED  -> YES on every row (station) whose arrival / departure was edited
+// TRAIN_STATUS  -> EDITED on every row of a train that has at least one edited row, else NOT EDITED
 
 function convertTimeValue(value) {
   if (value == null || value === '') return null;

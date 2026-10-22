@@ -8,6 +8,7 @@ import {
   EXPORT_TOO_BIG_MESSAGE,
   exportGraphAsPNG,
   exportGraphAsPDF,
+  exportAllTrainsVectorPDF,
   exportTrainsAsCSV,
   exportScheduleInOriginalFormat,
 } from '../../services/exportService';
@@ -140,10 +141,16 @@ export function DownloadMenu({ scrollAreaRef }) {
     }
     const width = Math.max(1, panels) * panelWidth(zoom) + STATION_LABEL_COL_WIDTH * 2;
     const height = el ? el.scrollHeight : 1000;
-    if (!planExportScale(width, height).tooBig) return false;
+    // (a) image too big for the browser  (b) too many train-paths to draw at once -> tab freezes
+    const tooBigImage = planExportScale(width, height).tooBig;
+    const tooManyPaths = Math.max(1, panels) * list.length > 4000;
+    if (!tooBigImage && !tooManyPaths) return false;
     requestConfirm({
       title: 'Graph too large to export',
-      message: EXPORT_TOO_BIG_MESSAGE,
+      message: tooManyPaths && !tooBigImage
+        ? `${list.length} trains x ${panels} day column(s) is too much to draw at once and would freeze the page. ` +
+          'Choose "Pick trains…" / "Single train" or show fewer trains / days, then try again.'
+        : EXPORT_TOO_BIG_MESSAGE,
       confirmLabel: 'OK',
       onConfirm: () => {},
     });
@@ -164,6 +171,21 @@ export function DownloadMenu({ scrollAreaRef }) {
     const list = resolveScopeTrainList();
     if (exportIsTooLarge(list)) { setOpen(false); return; }
     await withScopeApplied(list, () => exportGraphAsPDF(el, 'railway-chart.pdf'));
+    setOpen(false);
+  }
+  // Vector PDF: draws every train directly into the PDF (one page per day) — never freezes
+  async function handleAllTrainsPDF() {
+    const list = resolveScopeTrainList();
+    try {
+      await exportAllTrainsVectorPDF(list, useAppStore.getState().stations);
+    } catch (err) {
+      requestConfirm({
+        title: 'Export failed',
+        message: `Could not generate the PDF (${err?.message || 'unknown error'}).`,
+        confirmLabel: 'OK',
+        onConfirm: () => {},
+      });
+    }
     setOpen(false);
   }
   function handleCSV() {
@@ -260,6 +282,13 @@ export function DownloadMenu({ scrollAreaRef }) {
           </button>
           <button disabled={scopeCount === 0} onClick={handlePDF}>
             <FileText size={14} /> Download graph as PDF
+          </button>
+          <button
+            disabled={scopeCount === 0}
+            onClick={handleAllTrainsPDF}
+            title="Draws all trains directly into the PDF, one page per day. Works for 500+ trains."
+          >
+            <FileText size={14} /> Download ALL trains as PDF (1 page / day)
           </button>
           <button
             disabled={scopeCount === 0 || !scheduleSource}
