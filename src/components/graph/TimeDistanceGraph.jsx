@@ -392,8 +392,8 @@ export function TimeDistanceGraph() {
     state.setFocusedTrain(train.trainNumber);
 
     const field = point.kind === 'departure' ? 'departureRaw' : 'arrivalRaw';
-    // non-stop point: red dono ko saath le jata hai, green wahan stoppage banata hai
-    const linked = !!point.isPassThrough && point.kind === 'arrival';
+    // No special "non-stop" handling: every red / green half-disc is dragged on its own.
+    const linked = false;
     const rect = svgEl.getBoundingClientRect();
     const x0 = e.clientX - rect.left;
     const y0 = e.clientY - rect.top;

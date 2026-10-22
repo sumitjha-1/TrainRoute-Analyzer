@@ -436,21 +436,11 @@ function PointMarker({ seg, zoom, scale, train, dayIndex, dragState, isEdited, i
     onDragStart(e, { train, point: seg.point, dayIndex, svgEl });
   }
 
-  function handleRequestHaltClick(e) {
-    // double-click sirf asli stoppage par: use non-stoppage banata hai
-    if (seg.point.isPassThrough || seg.point.isSoleEvent) return;
-    e.preventDefault();
-    e.stopPropagation();
-    onRequestHalt && onRequestHalt({ train, stationCode: seg.point.stationCode });
-  }
-
   const hitProps = {
     onPointerEnter: (e) => onHover(e, { train, point: seg.point }),
     onPointerMove: (e) => onHover(e, { train, point: seg.point }),
     onPointerLeave: onLeave,
     onPointerDown: handlePointerDown,
-    onDoubleClick: handleRequestHaltClick,
-    onContextMenu: handleRequestHaltClick,
     className: 'graph-point-marker',
     style: {
       cursor: isThisPointDragging ? 'grabbing' : 'grab',
