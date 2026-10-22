@@ -95,14 +95,25 @@ function toRgb(color) {
   return [200, 200, 200];
 }
 
-export async function exportAllTrainsVectorPDF(trains, stations, filename = 'railway-chart-all-trains.pdf') {
+export async function exportAllTrainsVectorPDF(trains, stations, filename = 'railway-chart-all-trains.pdf', originalTrains = {}) {
   if (!stations || stations.length === 0 || !trains || trains.length === 0) {
     throw new Error('Nothing to export — load a route and a schedule file first.');
   }
 
   // per train, per day segments
-  const perTrain = trains.map((train) => ({ train, ...buildTrainDaySegments(train) }));
-  const dayList = Array.from(new Set(perTrain.flatMap((pt) => Array.from(pt.segmentsByDay.keys())))).sort((a, b) => a - b);
+  const sig = (t) => t.stops.map((x) => `${x.stationCode}|${x.arrivalAbs}|${x.departureAbs}`).join(';');
+  const perTrain = trains.map((train) => {
+    const cur = buildTrainDaySegments(train);
+    const orig = originalTrains && originalTrains[train.trainNumber];
+    // the original path is only drawn for trains whose path really changed
+    const prev = orig && sig(orig) !== sig(train) ? buildTrainDaySegments(orig) : null;
+    return { train, ...cur, prevByDay: prev ? prev.segmentsByDay : null };
+  });
+  const dayList = Array.from(new Set(perTrain.flatMap((pt) => [
+    ...Array.from(pt.segmentsByDay.keys()),
+    ...(pt.prevByDay ? Array.from(pt.prevByDay.keys()) : []),
+  ]))).sort((a, b) => a - b);
+  const hasAnyPrev = perTrain.some((pt) => pt.prevByDay);
   if (dayList.length === 0) throw new Error('No train paths to draw.');
 
   // page geometry (pt)
@@ -149,6 +160,9 @@ export async function exportAllTrainsVectorPDF(trains, stations, filename = 'rai
     pdf.setFontSize(8);
     pdf.setTextColor(147, 161, 189);
     pdf.text(`${trains.length} trains · ${stations.length} stations`, L + 70, 28);
+    if (hasAnyPrev) {
+      pdf.text('Wide faded line = original path (before edit)', L + 280, 28);
+    }
 
     // station rows + labels
     pdf.setFontSize(Math.min(7, rowH - 2));
@@ -171,6 +185,29 @@ export async function exportAllTrainsVectorPDF(trains, stations, filename = 'rai
       pdf.setFontSize(8);
       pdf.text(String(h).padStart(2, '0'), x, T - 6, { align: 'center' });
       pdf.text(String(h).padStart(2, '0'), x, H - B + 14, { align: 'center' });
+    }
+
+    // original (previous) paths of edited trains: wide, faded "highlighter" line behind the current path
+    if (hasAnyPrev) {
+      const faded = new pdf.GState({ opacity: 0.28 });
+      const solid = new pdf.GState({ opacity: 1 });
+      pdf.setGState(faded);
+      pdf.setLineWidth(5);
+      pdf.setLineCap('round');
+      perTrain.forEach(({ train, prevByDay }) => {
+        const segs = prevByDay && prevByDay.get(day);
+        if (!segs) return;
+        const [r, g, b] = toRgb(train.color);
+        pdf.setDrawColor(r, g, b);
+        segs.forEach((seg) => {
+          const y1 = yOfEnd(seg.from);
+          const y2 = yOfEnd(seg.to);
+          if (y1 == null || y2 == null) return;
+          pdf.line(L + seg.from.minutesOfDay * PX_PER_MIN, y1, L + seg.to.minutesOfDay * PX_PER_MIN, y2);
+        });
+      });
+      pdf.setGState(solid);
+      pdf.setLineCap('butt');
     }
 
     // train paths
@@ -252,17 +289,7 @@ export function exportTrainsAsCSV(trains, filename = 'train-schedule.csv', origi
   downloadBlob(blob, filename);
 }
 
-// =====================================================================
-//  SCHEDULE DOWNLOAD — same layout as the uploaded schedule file
-// =====================================================================
-//
-// The uploaded file's rows are kept as-is. Only the arrival / departure
-// time cells that were changed are rewritten (in the cell's own style:
-// HH:MM or HH:MM:SS), plus the day-of-run cell when a time moved to another
-// day. Five columns are appended at the end:
-//   PREV_ARRIVAL, PREV_DEPARTURE  -> timing in the uploaded file
-//   CURR_ARRIVAL, CURR_DEPARTURE  -> timing now (after edits)
-//   TIME_CHANGED                  -> YES when previous and current differ
+fer
 
 const EXTRA_HEADERS = ['PREV_ARRIVAL', 'PREV_DEPARTURE', 'CURR_ARRIVAL', 'CURR_DEPARTURE', 'TIME_CHANGED', 'TRAIN_STATUS'];
 // TIME_CHANGED  -> YES on every row (station) whose arrival / departure was edited

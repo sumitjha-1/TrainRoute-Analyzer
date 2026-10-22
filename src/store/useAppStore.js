@@ -231,6 +231,11 @@ export const useAppStore = create((set, get) => ({
   lastUpdatedTrainNumber: null,
   haltEnabledKeys: new Set(),
 
+  // trainNumber -> the ORIGINAL version of that train (as it was before its very first edit).
+  // The "previous path" shown on the graph / in the PDF is always this original, however many
+  // times the train is edited and saved afterwards.
+  originalTrains: {},
+
   // trainNumber -> [{ savedAt, train }]  (previous versions, oldest first)
   pathHistory: {},
   showPreviousPaths: true,
@@ -332,6 +337,7 @@ export const useAppStore = create((set, get) => ({
       ...freshEditSession(),
       lastUpdatedTrainNumber: null,
       scheduleSource: null,
+      originalTrains: {},
       scheduleFileState: { file, status: 'loading', issues: [] },
     });
     try {
@@ -396,6 +402,7 @@ export const useAppStore = create((set, get) => ({
       ...freshEditSession(),
       scheduleFileState: initialFileState(),
       scheduleSource: null,
+      originalTrains: {},
       trains: [],
       baselineTrains: [],
       selectedTrainNumbers: null,
@@ -415,6 +422,7 @@ export const useAppStore = create((set, get) => ({
       routeFileState: initialFileState(),
       scheduleFileState: initialFileState(),
       scheduleSource: null,
+      originalTrains: {},
       stations: [],
       trains: [],
       issues: [],
@@ -563,9 +571,16 @@ export const useAppStore = create((set, get) => ({
       }
     }
 
+    // remember the original (pre-first-edit) version of this train — only the first time
+    const currentTrain = s.trains.find((t) => t.trainNumber === trainNumber);
+    const originalTrains = s.originalTrains[trainNumber]
+      ? s.originalTrains
+      : { ...s.originalTrains, [trainNumber]: currentTrain };
+
     const trains = stampStopUids(s.trains);
     set({
       ...freshEditSession(),
+      originalTrains,
       isEditMode: true,
       editingTrainNumber: trainNumber,
       trains,
@@ -849,6 +864,10 @@ export function isHaltEnabled(state, trainNumber, stationCode) {
 
 /** The version of a train's path to compare against: pre-edit baseline while editing, else last saved version. */
 export function getPreviousTrain(state, trainNumber) {
+  // Always the ORIGINAL path (before the first edit). Falls back to the old behaviour
+  // only if no original has been recorded.
+  const originals = state.originalTrains ?? useAppStore.getState().originalTrains;
+  if (originals && originals[trainNumber]) return originals[trainNumber];
   if (state.isEditMode && state.editedTrainNumbers.has(trainNumber)) {
     return state.baselineTrains.find((t) => t.trainNumber === trainNumber) ?? null;
   }

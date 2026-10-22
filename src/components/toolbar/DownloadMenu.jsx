@@ -177,7 +177,8 @@ export function DownloadMenu({ scrollAreaRef }) {
   async function handleAllTrainsPDF() {
     const list = resolveScopeTrainList();
     try {
-      await exportAllTrainsVectorPDF(list, useAppStore.getState().stations);
+      const st = useAppStore.getState();
+      await exportAllTrainsVectorPDF(list, st.stations, undefined, st.originalTrains);
     } catch (err) {
       requestConfirm({
         title: 'Export failed',

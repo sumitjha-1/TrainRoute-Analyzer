@@ -15,6 +15,7 @@ import {
   VIRTUALIZATION_BUFFER_PX,
 } from '../../utils/graph/coordinates';
 import { buildTrainDaySegments } from '../../utils/graph/pathBuilder';
+import { trainSignature } from '../../utils/graph/pathDiff'; // ✅ naya import
 import {
   dayIndexToWeekdayIndex,
   WEEKDAY_NAMES,
@@ -69,6 +70,7 @@ export function TimeDistanceGraph() {
   const isEditMode = useAppStore((s) => s.isEditMode);
   const editedTrainNumbers = useAppStore((s) => s.editedTrainNumbers);
   const showPreviousPaths = useAppStore((s) => s.showPreviousPaths);
+  const originalTrains = useAppStore((s) => s.originalTrains); // ✅ naya selector
 
   const showErrorDialog = useCallback((message) => {
     requestConfirm({
@@ -89,19 +91,17 @@ export function TimeDistanceGraph() {
     [visibleTrains, stationFilter]
   );
 
-  // Previous path is drawn for EVERY train that has one: the train being edited right now
-  // (its pre-edit version) and every train that was edited & saved earlier (its last saved version).
-  // The History button in the toolbar switches all of them on/off.
+  // ✅ Previous path ab originalTrains (upload-time snapshot) se aata hai,
+  // aur signature compare karke sirf actually-changed trains ke liye dikhaya jaata hai.
   const previousByTrain = useMemo(() => {
     const map = new Map();
     if (!showPreviousPaths) return map;
-    const state = { isEditMode, editedTrainNumbers, baselineTrains, pathHistory };
     scopedTrains.forEach((t) => {
-      const prev = getPreviousTrain(state, t.trainNumber);
-      if (prev && prev !== t) map.set(t.trainNumber, prev);
+      const orig = originalTrains[t.trainNumber];
+      if (orig && trainSignature(orig) !== trainSignature(t)) map.set(t.trainNumber, orig);
     });
     return map;
-  }, [scopedTrains, showPreviousPaths, isEditMode, editedTrainNumbers, baselineTrains, pathHistory]);
+  }, [scopedTrains, showPreviousPaths, originalTrains]);
 
   const containerRef = useRef(null);
   const scrollElRef = useRef(null);
