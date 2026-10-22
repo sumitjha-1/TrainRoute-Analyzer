@@ -173,12 +173,17 @@ export function DownloadMenu({ scrollAreaRef }) {
     await withScopeApplied(list, () => exportGraphAsPDF(el, 'railway-chart.pdf'));
     setOpen(false);
   }
-  // Vector PDF: draws every train directly into the PDF (one page per day) — never freezes
-  async function handleAllTrainsPDF() {
+  // Vector PDF: draws every train directly into the PDF (one page per day) — never freezes.
+  // includePrevious = true  -> original (pre-edit) paths are drawn as a faded highlighter line
+  // includePrevious = false -> only the current paths
+  async function handleAllTrainsPDF(includePrevious) {
     const list = resolveScopeTrainList();
+    const filename = includePrevious
+      ? 'railway-chart-all-trains-with-previous-path.pdf'
+      : 'railway-chart-all-trains.pdf';
     try {
       const st = useAppStore.getState();
-      await exportAllTrainsVectorPDF(list, st.stations, undefined, st.originalTrains);
+      await exportAllTrainsVectorPDF(list, st.stations, filename, st.originalTrains, includePrevious);
     } catch (err) {
       requestConfirm({
         title: 'Export failed',
@@ -283,10 +288,17 @@ export function DownloadMenu({ scrollAreaRef }) {
           </button>
           <button
             disabled={scopeCount === 0}
-            onClick={handleAllTrainsPDF}
-            title="Draws all trains directly into the PDF, one page per day. Works for 500+ trains."
+            onClick={() => handleAllTrainsPDF(true)}
+            title="Draws all trains into the PDF (1 page / day) and shows the original path of edited trains as a faded highlight."
           >
-            <FileText size={14} /> Download ALL trains as PDF (1 page / day)
+            <FileText size={14} /> PDF — with previous path (1 page / day)
+          </button>
+          <button
+            disabled={scopeCount === 0}
+            onClick={() => handleAllTrainsPDF(false)}
+            title="Draws all trains into the PDF (1 page / day) with the current paths only."
+          >
+            <FileText size={14} /> PDF — without previous path (1 page / day)
           </button>
           <button
             disabled={scopeCount === 0 || !scheduleSource}

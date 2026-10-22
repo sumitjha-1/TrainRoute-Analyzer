@@ -95,7 +95,13 @@ function toRgb(color) {
   return [200, 200, 200];
 }
 
-export async function exportAllTrainsVectorPDF(trains, stations, filename = 'railway-chart-all-trains.pdf', originalTrains = {}) {
+export async function exportAllTrainsVectorPDF(
+  trains,
+  stations,
+  filename = 'railway-chart-all-trains.pdf',
+  originalTrains = {},
+  includePrevious = true
+) {
   if (!stations || stations.length === 0 || !trains || trains.length === 0) {
     throw new Error('Nothing to export — load a route and a schedule file first.');
   }
@@ -104,8 +110,8 @@ export async function exportAllTrainsVectorPDF(trains, stations, filename = 'rai
   const sig = (t) => t.stops.map((x) => `${x.stationCode}|${x.arrivalAbs}|${x.departureAbs}`).join(';');
   const perTrain = trains.map((train) => {
     const cur = buildTrainDaySegments(train);
-    const orig = originalTrains && originalTrains[train.trainNumber];
-    // the original path is only drawn for trains whose path really changed
+    const orig = includePrevious && originalTrains ? originalTrains[train.trainNumber] : null;
+    // the original path is only drawn for trains whose path really changed (and only if requested)
     const prev = orig && sig(orig) !== sig(train) ? buildTrainDaySegments(orig) : null;
     return { train, ...cur, prevByDay: prev ? prev.segmentsByDay : null };
   });
@@ -189,10 +195,11 @@ export async function exportAllTrainsVectorPDF(trains, stations, filename = 'rai
 
     // original (previous) paths of edited trains: wide, faded "highlighter" line behind the current path
     if (hasAnyPrev) {
-      const faded = new pdf.GState({ opacity: 0.28 });
-      const solid = new pdf.GState({ opacity: 1 });
+      // NOTE: jsPDF needs 'stroke-opacity' for lines; 'opacity' alone only affects fills.
+      const faded = new pdf.GState({ opacity: 0.14, 'stroke-opacity': 0.14 });
+      const solid = new pdf.GState({ opacity: 1, 'stroke-opacity': 1 });
       pdf.setGState(faded);
-      pdf.setLineWidth(5);
+      pdf.setLineWidth(4.5);
       pdf.setLineCap('round');
       perTrain.forEach(({ train, prevByDay }) => {
         const segs = prevByDay && prevByDay.get(day);
@@ -288,8 +295,6 @@ export function exportTrainsAsCSV(trains, filename = 'train-schedule.csv', origi
   const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
   downloadBlob(blob, filename);
 }
-
-fer
 
 const EXTRA_HEADERS = ['PREV_ARRIVAL', 'PREV_DEPARTURE', 'CURR_ARRIVAL', 'CURR_DEPARTURE', 'TIME_CHANGED', 'TRAIN_STATUS'];
 // TIME_CHANGED  -> YES on every row (station) whose arrival / departure was edited
