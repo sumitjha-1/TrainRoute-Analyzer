@@ -15,9 +15,7 @@ import './App.css';
 function EditModeBar() {
   const isEditMode = useAppStore((s) => s.isEditMode);
   const pending = useAppStore((s) => s.editHistory.length);
-  const lockedTrain = useAppStore((s) =>
-    s.editedTrainNumbers.size > 0 ? Array.from(s.editedTrainNumbers)[0] : null
-  );
+  const editingTrain = useAppStore((s) => s.editingTrainNumber);
   const singleSideMode = useAppStore((s) => s.singleSideMode);
   const setSingleSideMode = useAppStore((s) => s.setSingleSideMode);
   const saveEdits = useAppStore((s) => s.saveEdits);
@@ -30,7 +28,7 @@ function EditModeBar() {
       <span className="edit-bar-text">
         <strong>Edit mode</strong>
         <span className="edit-bar-sep">·</span>
-        {lockedTrain ? `Train ${lockedTrain} — save or cancel to edit another` : 'One train at a time'}
+        {editingTrain ? `Train ${editingTrain} — save or cancel to edit another` : 'One train at a time'}
         {pending > 0 && <span className="edit-bar-count">{pending} pending</span>}
       </span>
       <label className="edit-bar-toggle" title="Or hold Shift while dragging">

@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { HOUR_LINES, TEN_MIN_LINES, MINOR_DOTS } from '../../utils/graph/gridBuilder';
 import { minutesToX, rangesOverlap } from '../../utils/graph/coordinates';
 import { formatClock, absoluteToClock } from '../../utils/time/time';
@@ -23,6 +23,7 @@ function DayPanelGridInner({
   onPointHover,
   onPointLeave,
   onTrainClick,
+  onTrainContextMenu,
   onPointDragStart,
   onRequestHalt,
   dragState,
@@ -134,6 +135,7 @@ function DayPanelGridInner({
           onPointHover={onPointHover}
           onPointLeave={onPointLeave}
           onTrainClick={onTrainClick}
+          onTrainContextMenu={onTrainContextMenu}
           onPointDragStart={onPointDragStart}
           onRequestHalt={onRequestHalt}
         />
@@ -161,6 +163,7 @@ function segmentsPropsEqual(prev, next) {
     prev.onPointHover === next.onPointHover &&
     prev.onPointLeave === next.onPointLeave &&
     prev.onTrainClick === next.onTrainClick &&
+    prev.onTrainContextMenu === next.onTrainContextMenu &&
     prev.onPointDragStart === next.onPointDragStart &&
     prev.onRequestHalt === next.onRequestHalt
   );
@@ -169,7 +172,7 @@ function segmentsPropsEqual(prev, next) {
 const TrainPath = memo(function TrainPath({
   train, segments, prevSegments, zoom, scale, stations, dayIndex, visibleMinutes, dragState,
   layerOpacity = 1, layerDashPattern,
-  onPointHover, onPointLeave, onTrainClick, onPointDragStart, onRequestHalt,
+  onPointHover, onPointLeave, onTrainClick, onTrainContextMenu, onPointDragStart, onRequestHalt,
 }) {
   const isHovered = useAppStore((s) => s.hoveredTrainNumber === train.trainNumber);
   const isFocused = useAppStore((s) => s.focusedTrainNumber === train.trainNumber);
@@ -180,17 +183,27 @@ const TrainPath = memo(function TrainPath({
   const lastEditedStation = hasEdits && lastEditedKey && lastEditedKey.startsWith(train.trainNumber + '\u0000')
     ? lastEditedKey.slice(train.trainNumber.length + 1)
     : null;
+  // while one train is open for editing every other train is dimmed
   const editingOther = useAppStore(
-    (s) => s.isEditMode && s.editedTrainNumbers.size > 0 && !s.editedTrainNumbers.has(train.trainNumber)
+    (s) => s.isEditMode && s.editingTrainNumber != null && s.editingTrainNumber !== train.trainNumber
   );
+
+  // cursor position (inside this svg) while hovering the path — the train number follows it
+  const [hoverPos, setHoverPos] = useState(null);
 
   const isDimmed = (anyFocus && !isFocused) || editingOther;
   const strokeWidth = isFocused || hasEdits ? 3.8 : isHovered ? 3 : 2;
   const dashPattern = layerDashPattern ?? train.dashPattern;
 
-  const visibleSegments = segments.filter((seg) =>
-    rangesOverlap(seg.from.minutesOfDay, seg.to.minutesOfDay, visibleMinutes.minMinutes, visibleMinutes.maxMinutes)
-  );
+  // a segment can run backwards while a time is being edited, so compare with min/max
+  const segInView = (seg) =>
+    rangesOverlap(
+      Math.min(seg.from.minutesOfDay, seg.to.minutesOfDay),
+      Math.max(seg.from.minutesOfDay, seg.to.minutesOfDay),
+      visibleMinutes.minMinutes,
+      visibleMinutes.maxMinutes
+    );
+  const visibleSegments = segments.filter(segInView);
 
   const yOf = (end) => scale.toY(end.point?.stationCode) ?? scale.toYFromDistance(end.distance);
 
@@ -203,9 +216,7 @@ const TrainPath = memo(function TrainPath({
   }));
 
   const prevLines = (prevSegments || [])
-    .filter((seg) =>
-      rangesOverlap(seg.from.minutesOfDay, seg.to.minutesOfDay, visibleMinutes.minMinutes, visibleMinutes.maxMinutes)
-    )
+    .filter(segInView)
     .map((seg) => ({
       seg,
       x1: minutesToX(seg.from.minutesOfDay, zoom),
@@ -216,10 +227,27 @@ const TrainPath = memo(function TrainPath({
 
   const lastSeg = visibleSegments[visibleSegments.length - 1];
 
+  function trackPointer(e) {
+    const svg = e.currentTarget.ownerSVGElement;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    setHoverPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    const st = useAppStore.getState();
+    if (st.hoveredTrainNumber !== train.trainNumber) st.setHoveredTrain(train.trainNumber);
+  }
+  function leavePath() {
+    setHoverPos(null);
+    const st = useAppStore.getState();
+    if (st.hoveredTrainNumber === train.trainNumber) st.setHoveredTrain(null);
+  }
+
+  const firstLabelSeg = visibleSegments.find((s) => s.from.point);
+
   return (
     <g
       opacity={(isDimmed ? 0.6 : 1) * layerOpacity}
       onClick={() => onTrainClick(train.trainNumber)}
+      onContextMenu={(e) => onTrainContextMenu && onTrainContextMenu(e, train)}
       style={{ cursor: 'pointer' }}
     >
       {/* previous (before edit / last saved) path — highlighter-pen stroke behind the current one */}
@@ -263,9 +291,26 @@ const TrainPath = memo(function TrainPath({
             strokeLinecap="round"
             opacity={dragState ? 0.45 : 1}
             className={cls}
+            pointerEvents="none"
           />
         );
       })}
+
+      {/* wide invisible hit-line: hover (shows train number) + right-click (Edit train) */}
+      {lines.map(({ x1, y1, x2, y2 }, i) => (
+        <line
+          key={`hit-${i}`}
+          x1={x1} y1={y1} x2={x2} y2={y2}
+          stroke="transparent"
+          strokeWidth={12}
+          strokeLinecap="round"
+          pointerEvents="stroke"
+          onPointerEnter={trackPointer}
+          onPointerMove={trackPointer}
+          onPointerLeave={leavePath}
+        />
+      ))}
+
       {visibleSegments.map((seg, i) => (
         <PointMarker
           key={`p-${i}-from`}
@@ -299,8 +344,15 @@ const TrainPath = memo(function TrainPath({
           onRequestHalt={onRequestHalt}
         />
       )}
-      {visibleSegments.length > 0 && visibleSegments[0].from.point && (
-        <TrainLabel seg={visibleSegments[0].from} zoom={zoom} scale={scale} train={train} />
+
+      {/* train number only while hovering the path (or when the train is focused) */}
+      {isHovered && hoverPos && <TrainLabel x={hoverPos.x + 12} y={hoverPos.y - 22} train={train} />}
+      {((isHovered && !hoverPos) || (isFocused && !isHovered)) && firstLabelSeg && (
+        <TrainLabel
+          x={minutesToX(firstLabelSeg.from.minutesOfDay, zoom) + 8}
+          y={(scale.toY(firstLabelSeg.from.point.stationCode) ?? 0) - 20}
+          train={train}
+        />
       )}
     </g>
   );
@@ -356,10 +408,12 @@ function DragGhost({ dragState }) {
 }
 
 function PointMarker({ seg, zoom, scale, train, dayIndex, dragState, isEdited, isLastEdited, onHover, onLeave, onDragStart, onRequestHalt }) {
-  const isEditMode = useAppStore((s) => s.isEditMode);
+  // red / green half-discs exist ONLY on the train that is currently open for editing
+  const isEditingThis = useAppStore((s) => s.isEditMode && s.editingTrainNumber === train.trainNumber);
   const errKey = seg.point ? errorMarkKey(train.trainNumber, seg.point.stationCode, seg.point.kind) : null;
   const hasSaveError = useAppStore((s) => (errKey ? s.saveErrorKeys.has(errKey) : false));
 
+  if (!isEditingThis) return null;
   if (!seg.point) return null;
   const x = minutesToX(seg.minutesOfDay, zoom);
   const y = scale.toY(seg.point.stationCode);
@@ -375,7 +429,6 @@ function PointMarker({ seg, zoom, scale, train, dayIndex, dragState, isEdited, i
     ((dragState.linked && !dragState.single) || dragState.field === (isDeparture ? 'departureRaw' : 'arrivalRaw'));
 
   function handlePointerDown(e) {
-    if (!isEditMode) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     if (!onDragStart) return;
     const svgEl = e.currentTarget.ownerSVGElement || e.currentTarget.closest('svg');
@@ -385,7 +438,7 @@ function PointMarker({ seg, zoom, scale, train, dayIndex, dragState, isEdited, i
 
   function handleRequestHaltClick(e) {
     // double-click sirf asli stoppage par: use non-stoppage banata hai
-    if (!isEditMode || seg.point.isPassThrough || seg.point.isSoleEvent) return;
+    if (seg.point.isPassThrough || seg.point.isSoleEvent) return;
     e.preventDefault();
     e.stopPropagation();
     onRequestHalt && onRequestHalt({ train, stationCode: seg.point.stationCode });
@@ -400,8 +453,8 @@ function PointMarker({ seg, zoom, scale, train, dayIndex, dragState, isEdited, i
     onContextMenu: handleRequestHaltClick,
     className: 'graph-point-marker',
     style: {
-      cursor: !isEditMode ? 'default' : isThisPointDragging ? 'grabbing' : 'grab',
-      touchAction: isEditMode ? 'none' : 'auto',
+      cursor: isThisPointDragging ? 'grabbing' : 'grab',
+      touchAction: 'none',
     },
   };
 
@@ -443,15 +496,12 @@ function PointMarker({ seg, zoom, scale, train, dayIndex, dragState, isEdited, i
   );
 }
 
-function TrainLabel({ seg, zoom, scale, train }) {
-  const x = minutesToX(seg.minutesOfDay, zoom);
-  const y = scale.toY(seg.point.stationCode);
-  if (y == null) return null;
+function TrainLabel({ x, y, train }) {
   const label = train.trainNumber;
   const width = label.length * 6.5 + 10;
   return (
-    <g transform={`translate(${x + 8}, ${y - 20})`} pointerEvents="none">
-      <rect width={width} height={16} rx={4} fill="var(--bg-canvas)" stroke={train.color} strokeWidth={1} opacity={0.92} />
+    <g transform={`translate(${x}, ${y})`} pointerEvents="none">
+      <rect width={width} height={16} rx={4} fill="var(--bg-canvas)" stroke={train.color} strokeWidth={1} opacity={0.95} />
       <text x={width / 2} y={11.5} textAnchor="middle" className="graph-train-label" fill={train.color}>
         {label}
       </text>
@@ -473,6 +523,7 @@ function panelPropsEqual(prev, next) {
     prev.onPointHover === next.onPointHover &&
     prev.onPointLeave === next.onPointLeave &&
     prev.onTrainClick === next.onTrainClick &&
+    prev.onTrainContextMenu === next.onTrainContextMenu &&
     prev.onPointDragStart === next.onPointDragStart &&
     prev.onRequestHalt === next.onRequestHalt &&
     prev.dragState === next.dragState

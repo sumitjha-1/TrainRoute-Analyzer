@@ -1,8 +1,13 @@
 import { useState, useRef, useEffect, useMemo, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Download, Image, FileText, Table } from 'lucide-react';
+import { Download, Image, FileText, Table, FileSpreadsheet } from 'lucide-react';
 import { useAppStore, getVisibleTrains } from '../../store/useAppStore';
-import { exportGraphAsPNG, exportGraphAsPDF, exportTrainsAsCSV } from '../../services/exportService';
+import {
+  exportGraphAsPNG,
+  exportGraphAsPDF,
+  exportTrainsAsCSV,
+  exportScheduleInOriginalFormat,
+} from '../../services/exportService';
 import './DownloadMenu.css';
 
 const SCOPES = [
@@ -28,17 +33,15 @@ export function DownloadMenu({ scrollAreaRef }) {
   const showAllTrains = useAppStore((s) => s.showAllTrains);
   const setExportRendering = useAppStore((s) => s.setExportRendering);
   const requestConfirm = useAppStore((s) => s.requestConfirm);
+  const scheduleSource = useAppStore((s) => s.scheduleSource);
 
   const visibleTrains = useMemo(
     () => getVisibleTrains({ trains, selectedTrainNumbers, searchQuery }),
     [trains, selectedTrainNumbers, searchQuery]
   );
 
-  // The dropdown is rendered via a portal straight into document.body — NOT
-  // as a child of .toolbar — specifically so the toolbar's
-  // overflow-x:auto/overflow-y:hidden (needed to keep it on one line) can
-  // never clip it. Position is computed from the button's live screen
-  // location every time it opens, and re-synced on scroll/resize.
+  // The dropdown is rendered via a portal straight into document.body so the toolbar's
+  // overflow can never clip it.
   useLayoutEffect(() => {
     if (!open) return;
     function updatePos() {
@@ -55,9 +58,6 @@ export function DownloadMenu({ scrollAreaRef }) {
     };
   }, [open]);
 
-  // Close on outside click — must check BOTH the button and the portaled
-  // dropdown, since the dropdown no longer lives inside the same DOM
-  // subtree as the button.
   useEffect(() => {
     if (!open) return;
     function onPointerDown(e) {
@@ -102,12 +102,6 @@ export function DownloadMenu({ scrollAreaRef }) {
     }
   }
 
-  // Resolve the actual scroll-area DOM node at click time rather than
-  // trusting scrollAreaRef.current to already be populated — App.jsx syncs
-  // that ref via a separate effect, and depending on render timing it can
-  // still be null the moment this button is clicked. Falling back to a
-  // live querySelector makes this self-healing regardless of prop-wiring
-  // or effect-ordering issues.
   function resolveScrollAreaEl() {
     return scrollAreaRef?.current || document.querySelector('.graph-scroll-area');
   }
@@ -141,6 +135,21 @@ export function DownloadMenu({ scrollAreaRef }) {
   function handleCSV() {
     const list = resolveScopeTrainList();
     exportTrainsAsCSV(list, `${scope}-trains-schedule.csv`);
+    setOpen(false);
+  }
+  // Schedule in the SAME format as the uploaded file, with previous + current timings
+  function handleScheduleFile() {
+    const list = resolveScopeTrainList();
+    try {
+      exportScheduleInOriginalFormat(scheduleSource, list);
+    } catch (err) {
+      requestConfirm({
+        title: 'Export failed',
+        message: `Could not generate the schedule file (${err?.message || 'unknown error'}).`,
+        confirmLabel: 'OK',
+        onConfirm: () => {},
+      });
+    }
     setOpen(false);
   }
 
@@ -218,8 +227,15 @@ export function DownloadMenu({ scrollAreaRef }) {
           <button disabled={scopeCount === 0} onClick={handlePDF}>
             <FileText size={14} /> Download graph as PDF
           </button>
+          <button
+            disabled={scopeCount === 0 || !scheduleSource}
+            onClick={handleScheduleFile}
+            title="Same format as the uploaded schedule file, with previous & current timings"
+          >
+            <FileSpreadsheet size={14} /> Download schedule file (uploaded format)
+          </button>
           <button disabled={scopeCount === 0} onClick={handleCSV}>
-            <Table size={14} /> Download schedule as CSV
+            <Table size={14} /> Download schedule as simple CSV
           </button>
         </div>,
         document.body

@@ -1,11 +1,13 @@
 import { MINUTES_PER_DAY } from '../time/time.js';
 
 /**
- * A "point" is a plotted vertex: { minutesOfDay, day, distance, stationCode, kind, clock, stopRef }
+ * A "point" is a plotted vertex: { abs, day, distance, stationCode, kind, clock, stopRef }
  * kind: 'arrival' | 'departure'
- * stopRef: the original ScheduleStop object this point was derived from — carried
- * through so the graph's drag-to-edit interaction can identify exactly which
- * stop/field to mutate without re-deriving it from coordinates.
+ *
+ * IMPORTANT: points are connected in STATION ORDER (stop 1 arrival -> stop 1 departure ->
+ * stop 2 arrival -> stop 2 departure ...), never re-sorted by time. So while a point is being
+ * edited, the path always stays attached to its own station neighbours; if a time ends up
+ * out of order the line simply goes backwards, and Save validation reports it.
  */
 export function buildTrainDaySegments(train) {
   const points = [];
@@ -41,9 +43,8 @@ export function buildTrainDaySegments(train) {
       });
     }
   });
-  points.sort((a, b) => a.abs - b.abs);
+  // NOTE: no sort by time here — see comment above.
 
-  // Build a flat polyline in absolute-minute space, then slice it per day.
   const segmentsByDay = new Map();
   const pushSeg = (day, seg) => {
     if (!segmentsByDay.has(day)) segmentsByDay.set(day, []);
@@ -55,6 +56,17 @@ export function buildTrainDaySegments(train) {
     const b = points[i + 1];
     const dayA = Math.floor(a.abs / MINUTES_PER_DAY);
     const dayB = Math.floor(b.abs / MINUTES_PER_DAY);
+
+    if (b.abs < a.abs) {
+      // Time runs backwards (only possible mid-edit / invalid data): draw the link in the
+      // earlier point's day so the path stays connected to the right neighbours.
+      const toMin = Math.max(0, Math.min(MINUTES_PER_DAY, b.abs - dayA * MINUTES_PER_DAY));
+      pushSeg(dayA, {
+        from: { minutesOfDay: a.abs - dayA * MINUTES_PER_DAY, distance: a.distance, point: a },
+        to: { minutesOfDay: toMin, distance: b.distance, point: b },
+      });
+      continue;
+    }
 
     if (dayA === dayB) {
       pushSeg(dayA, {
@@ -87,6 +99,8 @@ export function buildTrainDaySegments(train) {
     }
   }
 
-  const maxDay = points.length ? Math.floor(points[points.length - 1].abs / MINUTES_PER_DAY) : 0;
+  const maxDay = points.length
+    ? Math.max(...points.map((p) => Math.floor(p.abs / MINUTES_PER_DAY)))
+    : 0;
   return { segmentsByDay, maxDay, points };
 }

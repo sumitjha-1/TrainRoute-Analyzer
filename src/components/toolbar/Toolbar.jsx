@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   ZoomIn, ZoomOut, Maximize2, Minimize2, Printer, RotateCcw,
-  PanelLeft, PanelRight, History, Pencil, X,
+  PanelLeft, PanelRight, History, X,
 } from 'lucide-react';
 import { useAppStore, AUTO_VISIBLE_TRAIN_LIMIT, getScheduleDayCount } from '../../store/useAppStore';
 import { IconButton } from '../common/Button';
@@ -17,7 +17,6 @@ export function Toolbar({ scrollAreaRef, fullscreenRef }) {
   const undoLastEdit = useAppStore((s) => s.undoLastEdit);
   const editHistory = useAppStore((s) => s.editHistory);
   const isEditMode = useAppStore((s) => s.isEditMode);
-  const enterEditMode = useAppStore((s) => s.enterEditMode);
   const toggleDetailsPanel = useAppStore((s) => s.toggleDetailsPanel);
   const isDetailsPanelOpen = useAppStore((s) => s.isDetailsPanelOpen);
   const isSidebarOpen = useAppStore((s) => s.isSidebarOpen);
@@ -78,14 +77,8 @@ export function Toolbar({ scrollAreaRef, fullscreenRef }) {
       )}
 
       <div className="toolbar-group">
-        {!isEditMode && (
-          <button className="toolbar-btn toolbar-btn-edit" disabled={trains.length === 0}
-                  onClick={() => enterEditMode()} title="Enable editing">
-            <Pencil size={14} /> Edit
-          </button>
-        )}
         <IconButton active={showPreviousPaths} onClick={togglePreviousPaths}
-                    title={showPreviousPaths ? 'Hide previous path' : 'Show previous path'}>
+                    title={showPreviousPaths ? 'Hide previous paths' : 'Show previous paths of all edited trains'}>
           <History size={16} />
         </IconButton>
         {isEditMode && (

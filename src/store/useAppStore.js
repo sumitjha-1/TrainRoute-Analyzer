@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import { create } from 'zustand';
 import { parseRouteFile } from '../services/fileParser/routeParser';
 import { parseScheduleFile } from '../services/fileParser/scheduleParser';
+import { readRawTable } from '../services/fileParser/rawTableReader';
 import { normalizeAgainstRoute } from '../services/fileParser/normalize';
 import {
   formatClock,
@@ -37,10 +38,11 @@ function clampZoom(value) {
   return Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, value));
 }
 
-const NOT_EDITING = { ok: false, error: 'The schedule is in View Mode. Click Edit to make changes.' };
+const NOT_EDITING = { ok: false, error: 'The schedule is in View Mode. Right-click a train and choose "Edit train" to make changes.' };
 
 const freshEditSession = () => ({
   isEditMode: false,
+  editingTrainNumber: null, // the ONE train that is open for editing (right-click -> Edit train)
   isDirty: false,
   editHistory: [],
   editedStopKeys: new Set(),
@@ -172,6 +174,9 @@ function editLockError(s, { trainNumber = null, route = false }) {
     return null;
   }
   if (editingRoute) return 'A route distance change is pending. Save or undo it before editing a train.';
+  if (s.editingTrainNumber && s.editingTrainNumber !== trainNumber) {
+    return `Train ${s.editingTrainNumber} is open for editing. Save or cancel it before editing train ${trainNumber}.`;
+  }
   if (lockedTrain && lockedTrain !== trainNumber) {
     return `Train ${lockedTrain} has unsaved changes. Save or cancel them before editing train ${trainNumber}.`;
   }
@@ -210,6 +215,10 @@ export const useAppStore = create((set, get) => ({
 
   routeFileState: initialFileState(),
   scheduleFileState: initialFileState(),
+
+  // Raw rows of the uploaded schedule file (+ the trains as first parsed). Used to download a
+  // schedule file in the exact uploaded format with previous / current timings.
+  scheduleSource: null,
 
   stations: [],
   trains: [],
@@ -322,15 +331,23 @@ export const useAppStore = create((set, get) => ({
     set({
       ...freshEditSession(),
       lastUpdatedTrainNumber: null,
+      scheduleSource: null,
       scheduleFileState: { file, status: 'loading', issues: [] },
     });
     try {
       const { trains, issues } = await parseScheduleFile(file);
       const hasBlockingError = issues.some((i) => i.level === 'error') && trains.length === 0;
+
+      // keep the raw rows so the edited schedule can be downloaded in the SAME format
+      let rawRows = null;
+      try { rawRows = await readRawTable(file); } catch { rawRows = null; }
+      const ext = (file.name.split('.').pop() || '').toLowerCase();
+
       set({
         scheduleFileState: { file, status: hasBlockingError ? 'error' : 'success', issues },
         trains,
         pathHistory: {},
+        scheduleSource: rawRows ? { fileName: file.name, ext, rows: rawRows, originalTrains: trains } : null,
       });
       get().revalidate();
       if (!get().isDirty) set({ baselineStations: get().stations, baselineTrains: get().trains });
@@ -357,11 +374,47 @@ export const useAppStore = create((set, get) => ({
     });
   },
 
+  /** Cross on the Route file card: removes ONLY the route file. */
+  clearRouteFile() {
+    const { scheduleFileState } = get();
+    set({
+      ...freshEditSession(),
+      routeFileState: initialFileState(),
+      stations: [],
+      baselineStations: [],
+      selectedStationCode: null,
+      stationFilter: null,
+      pathHistory: {},
+      issues: [...scheduleFileState.issues],
+    });
+  },
+
+  /** Cross on the Schedule file card: removes ONLY the schedule file. */
+  clearScheduleFile() {
+    const { routeFileState } = get();
+    set({
+      ...freshEditSession(),
+      scheduleFileState: initialFileState(),
+      scheduleSource: null,
+      trains: [],
+      baselineTrains: [],
+      selectedTrainNumbers: null,
+      focusedTrainNumber: null,
+      hoveredTrainNumber: null,
+      pathHistory: {},
+      lastUpdatedTrainNumber: null,
+      autoLimitedTrainCount: null,
+      haltEnabledKeys: new Set(),
+      issues: [...routeFileState.issues],
+    });
+  },
+
   clearAll() {
     set({
       ...freshEditSession(),
       routeFileState: initialFileState(),
       scheduleFileState: initialFileState(),
+      scheduleSource: null,
       stations: [],
       trains: [],
       issues: [],
@@ -490,18 +543,38 @@ export const useAppStore = create((set, get) => ({
     return { ok: true };
   },
 
-  enterEditMode: () => {
+  /**
+   * Opens ONE train for editing (right-click on a train -> "Edit train").
+   * Only a single train can be in edit mode at a time. Switching to another train is only
+   * possible once the current one has no unsaved changes.
+   */
+  enterEditMode: (trainNumber) => {
     const s = get();
-    if (s.isEditMode || s.trains.length === 0) return;
+    if (!trainNumber) return { ok: false, error: 'Right-click a train on the graph to edit it.' };
+    if (!s.trains.some((t) => t.trainNumber === trainNumber)) return { ok: false, error: 'Train not found.' };
+
+    if (s.isEditMode) {
+      if (s.editingTrainNumber === trainNumber) return { ok: true };
+      if (s.isDirty) {
+        return {
+          ok: false,
+          error: `Train ${s.editingTrainNumber ?? ''} has unsaved changes. Save or cancel them before editing train ${trainNumber}.`,
+        };
+      }
+    }
+
     const trains = stampStopUids(s.trains);
     set({
       ...freshEditSession(),
       isEditMode: true,
+      editingTrainNumber: trainNumber,
       trains,
       baselineTrains: trains,
       baselineStations: s.stations,
-      preEditHaltKeys: new Set(s.haltEnabledKeys),
+      preEditHaltKeys: s.isEditMode && s.preEditHaltKeys ? s.preEditHaltKeys : new Set(s.haltEnabledKeys),
+      focusedTrainNumber: trainNumber,
     });
+    return { ok: true };
   },
 
   requestCancelEdit: () => {

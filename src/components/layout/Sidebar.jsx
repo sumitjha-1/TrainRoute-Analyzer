@@ -11,7 +11,8 @@ export function Sidebar() {
   const scheduleFileState = useAppStore((s) => s.scheduleFileState);
   const loadRouteFile = useAppStore((s) => s.loadRouteFile);
   const loadScheduleFile = useAppStore((s) => s.loadScheduleFile);
-  const clearAll = useAppStore((s) => s.clearAll);
+  const clearRouteFile = useAppStore((s) => s.clearRouteFile);
+  const clearScheduleFile = useAppStore((s) => s.clearScheduleFile);
   const issues = useAppStore((s) => s.issues);
   const trains = useAppStore((s) => s.trains);
   const stations = useAppStore((s) => s.stations);
@@ -25,14 +26,14 @@ export function Sidebar() {
             description="Stations with cumulative distance"
             fileState={routeFileState}
             onFile={(f) => f && loadRouteFile(f)}
-            onClear={clearAll}
+            onClear={clearRouteFile}
           />
           <FileUploadCard
             title="Schedule file"
             description="Train stops with arrival / departure times"
             fileState={scheduleFileState}
             onFile={(f) => f && loadScheduleFile(f)}
-            onClear={clearAll}
+            onClear={clearScheduleFile}
           />
         </div>
       </SidebarSection>

@@ -6,12 +6,7 @@ import { panelWidth } from '../../utils/graph/coordinates';
 /**
  * Renders ONE day (or weekday, or the single layered panel) as a single
  * column: time header, grid, time header. The "Day N" label is a small
- * floating badge overlaid in the top-left corner of the grid — NOT a
- * separate solid block taking up its own horizontal space — so the train
- * paths stay visually continuous across the day boundary instead of
- * appearing to break/disappear behind a bar. Columns are laid out
- * left-to-right by the parent (TimeDistanceGraph's `.graph-days-row`),
- * giving Day 1 -> Day 2 -> Day 3 side-by-side.
+ * floating badge overlaid in the top-left corner of the grid.
  */
 function DayPanelInner({
   dayIndex,
@@ -24,6 +19,7 @@ function DayPanelInner({
   onPointHover,
   onPointLeave,
   onTrainClick,
+  onTrainContextMenu,
   onPointDragStart,
   onRequestHalt,
   dragState,
@@ -46,6 +42,7 @@ function DayPanelInner({
         onPointHover={onPointHover}
         onPointLeave={onPointLeave}
         onTrainClick={onTrainClick}
+        onTrainContextMenu={onTrainContextMenu}
         onPointDragStart={onPointDragStart}
         onRequestHalt={onRequestHalt}
         dragState={dragState}
@@ -89,6 +86,7 @@ function propsAreEqual(prev, next) {
   if (prev.onPointHover !== next.onPointHover) return false;
   if (prev.onPointLeave !== next.onPointLeave) return false;
   if (prev.onTrainClick !== next.onTrainClick) return false;
+  if (prev.onTrainContextMenu !== next.onTrainContextMenu) return false;
   if (prev.onPointDragStart !== next.onPointDragStart) return false;
   if (prev.onRequestHalt !== next.onRequestHalt) return false;
   const vm1 = prev.visibleMinutes, vm2 = next.visibleMinutes;

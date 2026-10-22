@@ -16,18 +16,14 @@ import {
 } from '../../utils/graph/coordinates';
 import { buildTrainDaySegments } from '../../utils/graph/pathBuilder';
 import {
-  clockToMinutes,
-  minutesToClock,
-  formatClock,
   dayIndexToWeekdayIndex,
   WEEKDAY_NAMES,
-  dayIndexToCalendarDate,
-  formatCalendarDayLabel,
 } from '../../utils/time/time';
 import { StationAxis } from './StationAxis';
 import { DayPanel } from './DayPanel';
 import { DayBoundary } from './DayBoundary';
 import { GraphTooltip } from './GraphTooltip';
+import { TrainContextMenu } from './TrainContextMenu';
 import { formatTooltip } from './DayPanelGrid';
 import { EmptyState } from '../common/EmptyState';
 import { TrainFront } from 'lucide-react';
@@ -51,6 +47,10 @@ export function TimeDistanceGraph() {
   const requestConfirm = useAppStore((s) => s.requestConfirm);
   const moveStopTo = useAppStore((s) => s.moveStopTo);
   const makeNonStop = useAppStore((s) => s.makeNonStop);
+  const enterEditMode = useAppStore((s) => s.enterEditMode);
+  const saveEdits = useAppStore((s) => s.saveEdits);
+  const requestCancelEdit = useAppStore((s) => s.requestCancelEdit);
+  const editingTrainNumber = useAppStore((s) => s.editingTrainNumber);
   const setHoveredTrain = useAppStore((s) => s.setHoveredTrain);
   const setFocusedTrain = useAppStore((s) => s.setFocusedTrain);
   const focusedTrainNumber = useAppStore((s) => s.focusedTrainNumber);
@@ -68,7 +68,6 @@ export function TimeDistanceGraph() {
   const pathHistory = useAppStore((s) => s.pathHistory);
   const isEditMode = useAppStore((s) => s.isEditMode);
   const editedTrainNumbers = useAppStore((s) => s.editedTrainNumbers);
-  const lastUpdatedTrainNumber = useAppStore((s) => s.lastUpdatedTrainNumber);
   const showPreviousPaths = useAppStore((s) => s.showPreviousPaths);
 
   const showErrorDialog = useCallback((message) => {
@@ -90,29 +89,26 @@ export function TimeDistanceGraph() {
     [visibleTrains, stationFilter]
   );
 
-  // Previous version of a path is drawn for: the focused train, the last saved train,
-  // and any train being edited in this session.
+  // Previous path is drawn for EVERY train that has one: the train being edited right now
+  // (its pre-edit version) and every train that was edited & saved earlier (its last saved version).
+  // The History button in the toolbar switches all of them on/off.
   const previousByTrain = useMemo(() => {
     const map = new Map();
     if (!showPreviousPaths) return map;
     const state = { isEditMode, editedTrainNumbers, baselineTrains, pathHistory };
     scopedTrains.forEach((t) => {
-      const relevant =
-        t.trainNumber === focusedTrainNumber ||
-        t.trainNumber === lastUpdatedTrainNumber ||
-        (isEditMode && editedTrainNumbers.has(t.trainNumber));
-      if (!relevant) return;
       const prev = getPreviousTrain(state, t.trainNumber);
       if (prev && prev !== t) map.set(t.trainNumber, prev);
     });
     return map;
-  }, [scopedTrains, showPreviousPaths, focusedTrainNumber, lastUpdatedTrainNumber, isEditMode, editedTrainNumbers, baselineTrains, pathHistory]);
+  }, [scopedTrains, showPreviousPaths, isEditMode, editedTrainNumbers, baselineTrains, pathHistory]);
 
   const containerRef = useRef(null);
   const scrollElRef = useRef(null);
   const justDraggedRef = useRef(false);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
   const [scrollPos, setScrollPos] = useState({ left: 0, top: 0, width: 0, height: 0 });
+  const [trainMenu, setTrainMenu] = useState(null);
   const rafRef = useRef(null);
 
   const viewportWidth = scrollPos.width || containerSize.width;
@@ -268,6 +264,7 @@ export function TimeDistanceGraph() {
 
   const handleScroll = useCallback(() => {
     hideTooltip();
+    setTrainMenu(null);
     if (rafRef.current) return;
     rafRef.current = requestAnimationFrame(() => {
       rafRef.current = null;
@@ -320,6 +317,26 @@ export function TimeDistanceGraph() {
     if (justDraggedRef.current) return; // the click that ends a drag must not change selection
     setFocusedTrain(focusedTrainNumber === trainNumber ? null : trainNumber);
   }, [focusedTrainNumber, setFocusedTrain]);
+
+  // right-click on a train path -> small menu (Edit train / Save / Cancel)
+  const handleTrainContextMenu = useCallback((e, train) => {
+    e.preventDefault();
+    e.stopPropagation();
+    hideTooltip();
+    const rect = containerRef.current.getBoundingClientRect();
+    setTrainMenu({
+      trainNumber: train.trainNumber,
+      x: Math.min(e.clientX - rect.left, Math.max(0, rect.width - 180)),
+      y: Math.min(e.clientY - rect.top, Math.max(0, rect.height - 110)),
+    });
+  }, [hideTooltip]);
+
+  const closeTrainMenu = useCallback(() => setTrainMenu(null), []);
+
+  const handleMenuEdit = useCallback((trainNumber) => {
+    const r = enterEditMode(trainNumber);
+    if (r && !r.ok) showErrorDialog(r.error);
+  }, [enterEditMode, showErrorDialog]);
 
   // scroll to a validation issue
   useEffect(() => {
@@ -422,11 +439,13 @@ export function TimeDistanceGraph() {
   const finalizeDrag = useCallback((session) => {
     if (!session || session.currentMinutes === session.origMinutes) return;
     const kind = session.field === 'arrivalRaw' ? 'arrival' : 'departure';
+    // Free movement: no clamping to neighbouring stations / own other side.
+    // Anything illegal is reported by the validation that runs on Save.
     const result = moveStopTo(session.trainNumber, session.stationCode, kind, session.currentMinutes, {
       single: session.single,
       linked: session.linked,
-      clamp: true,
-      bound: true, // neighbour station ke time ko cross nahi karega
+      clamp: false,
+      bound: false,
     });
     if (!result.ok) showErrorDialog(result.error);
   }, [moveStopTo, showErrorDialog]);
@@ -444,12 +463,11 @@ export function TimeDistanceGraph() {
       const rect = current.svgEl.getBoundingClientRect();
       const x = e.clientX - rect.left;
       const deltaMin = Math.round(xToMinutes(x - current.origX, zoom));
-      const { lo, hi } = useAppStore.getState().getStopBounds(current.trainNumber, current.stationCode);
-      const abs = Math.min(hi, Math.max(lo, current.origMinutes + deltaMin));
+      const abs = Math.max(0, current.origMinutes + deltaMin); // free horizontal movement
 
       setDragState((prev) => prev && ({
         ...prev,
-        x: prev.origX + minutesToX(abs - prev.origMinutes, zoom), // limit par dot ruk jata hai
+        x: prev.origX + minutesToX(abs - prev.origMinutes, zoom),
         y: prev.origY,
         currentMinutes: abs,
         single: e.shiftKey || useAppStore.getState().singleSideMode,
@@ -598,6 +616,7 @@ export function TimeDistanceGraph() {
                 onPointHover={handlePointHover}
                 onPointLeave={handlePointLeave}
                 onTrainClick={handleTrainClick}
+                onTrainContextMenu={handleTrainContextMenu}
                 onPointDragStart={handlePointDragStart}
                 onRequestHalt={handleRequestHalt}
                 dragState={dragState}
@@ -617,6 +636,14 @@ export function TimeDistanceGraph() {
         </div>
       </div>
       <GraphTooltip />
+      <TrainContextMenu
+        menu={trainMenu}
+        onClose={closeTrainMenu}
+        onEdit={handleMenuEdit}
+        onSave={() => saveEdits()}
+        onCancel={() => requestCancelEdit()}
+        editingTrainNumber={editingTrainNumber}
+      />
     </div>
   );
 }
