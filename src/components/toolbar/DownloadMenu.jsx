@@ -280,9 +280,6 @@ export function DownloadMenu({ scrollAreaRef }) {
           <button disabled={scopeCount === 0} onClick={handlePNG}>
             <Image size={14} /> Download graph as PNG
           </button>
-          <button disabled={scopeCount === 0} onClick={handlePDF}>
-            <FileText size={14} /> Download graph as PDF
-          </button>
           <button
             disabled={scopeCount === 0}
             onClick={handleAllTrainsPDF}
